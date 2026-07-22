@@ -198,8 +198,8 @@ jQuery(function($){
 
 <style>
 .ipv6-panel {
-    background:#eaf7ff;
-    color:#17324d;
+    background:#0f172a;
+    color:#e2e8f0;
     padding:20px;
     border-radius:10px;
 }
@@ -212,8 +212,8 @@ jQuery(function($){
 
 /* CABEÇALHO DA TABELA */
 .ipv6-panel th {
-    background:#b9e2f5;
-    color:#17324d;
+    background:#1e293b;
+    color:#f8fafc;
     padding:12px;
     font-weight:600;
     text-align:left;
@@ -221,11 +221,11 @@ jQuery(function($){
 
 .ipv6-panel td {
     padding:10px;
-    border-bottom:1px solid #c4e3f3;
+    border-bottom:1px solid #334155;
 }
 
 .ipv6-panel tr:hover {
-    background:#d9f1fc;
+    background:#17243a;
 }
 
 .ipv6-panel input {
@@ -297,7 +297,7 @@ jQuery(function($){
     font-size:13px;
     margin-top:10px;
 }
-.ipv6-nav{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0 18px}.ipv6-nav a{margin:0;padding:10px 14px;border-radius:7px;background:#d4efff;color:#17324d;text-decoration:none;border:1px solid #b9ddf2}.ipv6-nav a:nth-child(2){background:#c6e8fb}.ipv6-nav a:nth-child(3){background:#b9e2f5}.ipv6-nav a:nth-child(4){background:#dff4ff}.ipv6-nav a.active{background:#8ed2f2;color:#12344d}.ipv6-coming{margin:12px 0;padding:16px;border:1px solid #acd6eb;background:#fff;border-radius:8px}.ipv6-filters{display:grid;grid-template-columns:90px minmax(220px,1fr) 140px 1fr 1fr auto;gap:9px;align-items:center;background:#dff3ff;border:1px solid #c1e2f2;padding:12px;border-radius:9px}.ipv6-filters input,.ipv6-filters select{width:100%;margin:0;box-sizing:border-box;border:1px solid #9bcde8}.ipv6-config{background:#dff3ff;border-color:#acd6eb}.ipv6-muted{color:#456b82}.ipv6-config-btn{background:#b9e2f5;color:#17324d!important}@media(max-width:900px){.ipv6-filters{grid-template-columns:1fr 1fr}.ipv6-filters button{width:100%}}
+.content-wrapper{width:calc(100vw - 48px);max-width:1800px;margin-left:50%;transform:translateX(-50%)}.ipv6-nav{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0 18px}.ipv6-nav a{margin:0;padding:10px 14px;border-radius:7px;background:#1e293b;color:#e2e8f0;text-decoration:none;border:1px solid #26364d}.ipv6-nav a:nth-child(2){background:#223149}.ipv6-nav a:nth-child(3){background:#1b2b42}.ipv6-nav a:nth-child(4){background:#25344b}.ipv6-nav a.active{background:#2563eb;color:#fff;border-color:#3b82f6}.ipv6-coming{margin:12px 0;padding:16px;border:1px solid #334155;background:#111c31;border-radius:8px}.ipv6-filters{display:grid;grid-template-columns:90px minmax(250px,1fr) 150px minmax(190px,1fr) minmax(190px,1fr) auto;gap:9px;align-items:center;background:#111c31;border:1px solid #334155;padding:12px;border-radius:9px}.ipv6-filters input,.ipv6-filters select{width:100%;margin:0;box-sizing:border-box;border:1px solid #475569;background:#f8fafc;color:#0f172a}.ipv6-config{background:#111c31;border-color:#334155}.ipv6-muted{color:#94a3b8}.ipv6-config-btn{background:#1e293b;color:#e2e8f0!important}@media(max-width:900px){.content-wrapper{width:calc(100vw - 20px)}.ipv6-filters{grid-template-columns:1fr 1fr}.ipv6-filters button{width:100%}}
 </style>
 
 </head>
