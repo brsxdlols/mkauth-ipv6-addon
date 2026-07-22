@@ -1,0 +1,5 @@
+*.zip
+*.run
+.env
+config.local.php
+build/
