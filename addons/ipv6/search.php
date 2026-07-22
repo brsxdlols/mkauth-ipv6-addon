@@ -11,6 +11,6 @@ if ($status==='online') $where.=' AND r.acctstoptime IS NULL';
 if ($status==='offline') $where.=' AND r.acctstoptime IS NOT NULL';
 $sql="SELECT r.username,r.framedipaddress,r.acctstarttime,r.acctstoptime,h.ipv6,h.callingstationid FROM radacct r LEFT JOIN (SELECT h1.* FROM ipv6_history h1 INNER JOIN (SELECT session_id,MAX(id) max_id FROM ipv6_history GROUP BY session_id) h2 ON h1.id=h2.max_id) h ON h.session_id=r.acctsessionid WHERE $where ORDER BY r.radacctid DESC LIMIT $limit";
 $stmt=$conn->prepare($sql); if (!$stmt) { http_response_code(500); echo json_encode(array('error'=>$conn->error)); exit; }
-if ($types!=='') $stmt->bind_param($types,...$params); $stmt->execute(); $res=$stmt->get_result(); $rows=array();
+if ($types!=='') $stmt->bind_param('ssss',$like,$like,$like,$like); $stmt->execute(); $res=$stmt->get_result(); $rows=array();
 while($r=$res->fetch_assoc()){ $end=$r['acctstoptime']; $start=$r['acctstarttime']; $seconds=$start?max(0,strtotime($end?:date('Y-m-d H:i:s'))-strtotime($start)):0; $r['duration']=sprintf('%02d:%02d:%02d',floor($seconds/3600),floor(($seconds%3600)/60),$seconds%60); $r['online']=empty($end); $rows[]=$r; }
 echo json_encode(array('rows'=>$rows,'count'=>count($rows)),JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
