@@ -179,8 +179,8 @@ $historyStats = ipv6HistoryStats($conn, $retentionMonths);
 
 <style>
 .ipv6-panel {
-    background:#0f172a;
-    color:#e2e8f0;
+    background:#eaf7ff;
+    color:#17324d;
     padding:20px;
     border-radius:10px;
 }
@@ -193,8 +193,8 @@ $historyStats = ipv6HistoryStats($conn, $retentionMonths);
 
 /* CABEÇALHO DA TABELA */
 .ipv6-panel th {
-    background:#1e293b;   /* fundo escuro */
-    color:#ffffff;        /* 🔥 texto branco */
+    background:#b9e2f5;
+    color:#17324d;
     padding:12px;
     font-weight:600;
     text-align:left;
@@ -202,11 +202,11 @@ $historyStats = ipv6HistoryStats($conn, $retentionMonths);
 
 .ipv6-panel td {
     padding:10px;
-    border-bottom:1px solid #334155;
+    border-bottom:1px solid #c4e3f3;
 }
 
 .ipv6-panel tr:hover {
-    background:#1e293b;
+    background:#d9f1fc;
 }
 
 .ipv6-panel input {
@@ -278,7 +278,7 @@ $historyStats = ipv6HistoryStats($conn, $retentionMonths);
     font-size:13px;
     margin-top:10px;
 }
-.ipv6-nav{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0 18px}.ipv6-nav a{margin:0;padding:10px 14px;border-radius:7px;background:#1e293b;color:#e2e8f0;text-decoration:none}.ipv6-nav a.active{background:#2563eb;color:#fff}.ipv6-coming{margin:12px 0;padding:16px;border:1px solid #475569;background:#111c31;border-radius:8px}.ipv6-filters{display:grid;grid-template-columns:90px minmax(220px,1fr) 140px 1fr 1fr auto;gap:9px;align-items:center}.ipv6-filters input,.ipv6-filters select{width:100%;margin:0;box-sizing:border-box}@media(max-width:900px){.ipv6-filters{grid-template-columns:1fr 1fr}.ipv6-filters button{width:100%}}
+.ipv6-nav{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0 18px}.ipv6-nav a{margin:0;padding:10px 14px;border-radius:7px;background:#d4efff;color:#17324d;text-decoration:none;border:1px solid #b9ddf2}.ipv6-nav a:nth-child(2){background:#c6e8fb}.ipv6-nav a:nth-child(3){background:#b9e2f5}.ipv6-nav a:nth-child(4){background:#dff4ff}.ipv6-nav a.active{background:#8ed2f2;color:#12344d}.ipv6-coming{margin:12px 0;padding:16px;border:1px solid #acd6eb;background:#fff;border-radius:8px}.ipv6-filters{display:grid;grid-template-columns:90px minmax(220px,1fr) 140px 1fr 1fr auto;gap:9px;align-items:center;background:#dff3ff;border:1px solid #c1e2f2;padding:12px;border-radius:9px}.ipv6-filters input,.ipv6-filters select{width:100%;margin:0;box-sizing:border-box;border:1px solid #9bcde8}.ipv6-config{background:#dff3ff;border-color:#acd6eb}.ipv6-muted{color:#456b82}.ipv6-config-btn{background:#b9e2f5;color:#17324d!important}@media(max-width:900px){.ipv6-filters{grid-template-columns:1fr 1fr}.ipv6-filters button{width:100%}}
 </style>
 
 </head>
@@ -310,7 +310,7 @@ $historyStats = ipv6HistoryStats($conn, $retentionMonths);
 <div class="ipv6-nav">
     <a class="active" href="ipv6.php">Painel e logs</a>
     <a href="mikrotik.php">Scripts MikroTik</a>
-    <a href="?module=cgnat">CGNAT</a>
+    <a href="cgnat.php">CGNAT</a>
     <a href="?module=import">Importar mapeamento</a>
 </div>
 <?php if (($_GET['module'] ?? '') === 'cgnat'): ?><div class="ipv6-coming"><strong>Modulo CGNAT</strong><br>O gerador opcional e a correlacao por IP publico + porta + horario serao adicionados aqui. O historico IPv4/IPv6 continuara independente.</div><?php endif; ?>
@@ -376,6 +376,7 @@ $historyStats = ipv6HistoryStats($conn, $retentionMonths);
 <th>Duração</th>
 <th>Ação</th>
 </tr>
+<tbody id="ipv6-results">
 
 <?php
 $sql = buildSQL($busca,$inicio,$fim,$modoResumo,$status)." ORDER BY r.radacctid DESC LIMIT $limit OFFSET $offset";
@@ -399,7 +400,7 @@ echo "<tr>
 </tr>";
 }
 ?>
-
+</tbody>
 </table>
 <div style="margin-top:20px;">
 
@@ -438,6 +439,16 @@ Próxima ➡
 <?php include('../../baixo.php'); ?>
 <script src="../../menu.js.php"></script>
 <?php include('../../rodape.php'); ?>
+
+<script>
+(function(){
+var input=document.querySelector('input[name="busca"]'), status=document.querySelector('select[name="status"]'), limit=document.querySelector('select[name="limit"]'), body=document.getElementById('ipv6-results'), timer;
+if(!input||!body)return;
+function esc(v){var d=document.createElement('div');d.textContent=v==null?'':v;return d.innerHTML}
+function load(){clearTimeout(timer);timer=setTimeout(function(){var p=new URLSearchParams({q:input.value,status:status.value,limit:limit.value});fetch('search.php?'+p.toString(),{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(data){if(!data.rows)return;body.innerHTML=data.rows.map(function(r){return '<tr><td><span class="'+(r.online?'online':'offline')+'">&#9679; '+(r.online?'Online':'Offline')+'</span></td><td>'+esc(r.username)+'</td><td>'+esc(r.ipv6||'—')+'</td><td>'+esc(r.framedipaddress||'—')+'</td><td>'+esc(r.callingstationid||'—')+'</td><td>'+esc(r.acctstarttime||'')+'</td><td>'+esc(r.acctstoptime||'')+'</td><td>'+esc(r.duration)+'</td><td><a href="?busca='+encodeURIComponent(r.username)+'">&#128269;</a></td></tr>'}).join('')||'<tr><td colspan="9">Nenhum registro encontrado.</td></tr>'}).catch(function(){})},250)}
+input.addEventListener('input',load);status.addEventListener('change',load);limit.addEventListener('change',load);
+})();
+</script>
 
 </body>
 </html>
