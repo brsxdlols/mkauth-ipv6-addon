@@ -82,6 +82,7 @@ $busca  = $_GET['busca'] ?? '';
 $busca = $conn->real_escape_string($busca);
 $inicio = $_GET['inicio'] ?? '';
 $fim    = $_GET['fim'] ?? '';
+$status = in_array(($_GET['status'] ?? ''), array('online','offline'), true) ? $_GET['status'] : '';
 $page   = max(1, intval($_GET['page'] ?? 1));
 
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 30;
@@ -89,10 +90,10 @@ if(!in_array($limit, [30,50,100])) $limit = 30;
 
 $offset = ($page-1)*$limit;
 
-$modoResumo = empty($busca) && empty($inicio) && empty($fim);
+$modoResumo = empty($busca) && empty($inicio) && empty($fim) && empty($status);
 
 // ===== SQL =====
-function buildSQL($busca,$inicio,$fim,$modoResumo){
+function buildSQL($busca,$inicio,$fim,$modoResumo,$status=''){
 
     $joinIPv6 = "
     LEFT JOIN (
@@ -137,6 +138,9 @@ function buildSQL($busca,$inicio,$fim,$modoResumo){
     if($inicio && $fim){
         $sql .= " AND r.acctstarttime BETWEEN '$inicio' AND '$fim'";
     }
+
+    if($status === 'online') $sql .= " AND r.acctstoptime IS NULL";
+    if($status === 'offline') $sql .= " AND r.acctstoptime IS NOT NULL";
 
     $sql .= " AND r.username NOT REGEXP '^[0-9A-F:]{17}$'";
 
@@ -274,6 +278,7 @@ $historyStats = ipv6HistoryStats($conn, $retentionMonths);
     font-size:13px;
     margin-top:10px;
 }
+.ipv6-nav{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0 18px}.ipv6-nav a{margin:0;padding:10px 14px;border-radius:7px;background:#1e293b;color:#e2e8f0;text-decoration:none}.ipv6-nav a.active{background:#2563eb;color:#fff}.ipv6-coming{margin:12px 0;padding:16px;border:1px solid #475569;background:#111c31;border-radius:8px}.ipv6-filters{display:grid;grid-template-columns:90px minmax(220px,1fr) 140px 1fr 1fr auto;gap:9px;align-items:center}.ipv6-filters input,.ipv6-filters select{width:100%;margin:0;box-sizing:border-box}@media(max-width:900px){.ipv6-filters{grid-template-columns:1fr 1fr}.ipv6-filters button{width:100%}}
 </style>
 
 </head>
@@ -301,6 +306,15 @@ $historyStats = ipv6HistoryStats($conn, $retentionMonths);
     </div>
     <a class="ipv6-config-btn" href="?config=1" title="Configurar retencao">&#9881;</a>
 </div>
+
+<div class="ipv6-nav">
+    <a class="active" href="ipv6.php">Painel e logs</a>
+    <a href="mikrotik.php">Scripts MikroTik</a>
+    <a href="?module=cgnat">CGNAT</a>
+    <a href="?module=import">Importar mapeamento</a>
+</div>
+<?php if (($_GET['module'] ?? '') === 'cgnat'): ?><div class="ipv6-coming"><strong>Modulo CGNAT</strong><br>O gerador opcional e a correlacao por IP publico + porta + horario serao adicionados aqui. O historico IPv4/IPv6 continuara independente.</div><?php endif; ?>
+<?php if (($_GET['module'] ?? '') === 'import'): ?><div class="ipv6-coming"><strong>Importar mapeamento</strong><br>Area reservada para validar CSV, Excel, PDF e Word antes de sincronizar ranges e portas.</div><?php endif; ?>
 
 <?php if ($configMessage): ?>
 <div class="ipv6-alert"><?=$configMessage?></div>
@@ -335,20 +349,20 @@ $historyStats = ipv6HistoryStats($conn, $retentionMonths);
 </div>
 <?php endif; ?>
 
-<form method="GET">
+<form method="GET" class="ipv6-filters">
 <select name="limit">
     <option value="30" <?=($limit==30?'selected':'')?>>30</option>
     <option value="50" <?=($limit==50?'selected':'')?>>50</option>
     <option value="100" <?=($limit==100?'selected':'')?>>100</option>
 </select>
 
-<input name="busca" placeholder="Buscar usuário, IPv4 ou IPv6..." style="width:250px;">
+<input name="busca" value="<?=htmlspecialchars($_GET['busca'] ?? '',ENT_QUOTES,'ISO-8859-1')?>" placeholder="Usuario, IPv4, IPv6 ou MAC...">
+<select name="status"><option value="">Todos status</option><option value="online" <?=($status==='online'?'selected':'')?>>Online</option><option value="offline" <?=($status==='offline'?'selected':'')?>>Offline</option></select>
 <input type="datetime-local" name="inicio" value="<?=$inicio?>">
 <input type="datetime-local" name="fim" value="<?=$fim?>">
 <button>Buscar</button>
-<a href="?">Limpar</a>
-<a href="?export=1">CSV</a>
 </form>
+<div style="margin-top:10px"><a href="?">Limpar filtros</a><a href="?export=1">Exportar CSV</a></div>
 
 <table>
 <tr>
@@ -364,7 +378,7 @@ $historyStats = ipv6HistoryStats($conn, $retentionMonths);
 </tr>
 
 <?php
-$sql = buildSQL($busca,$inicio,$fim,$modoResumo)." ORDER BY r.radacctid DESC LIMIT $limit OFFSET $offset";
+$sql = buildSQL($busca,$inicio,$fim,$modoResumo,$status)." ORDER BY r.radacctid DESC LIMIT $limit OFFSET $offset";
 $res=$conn->query($sql);
 
 while($r=$res->fetch_assoc()){
