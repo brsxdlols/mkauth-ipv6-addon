@@ -14,6 +14,8 @@ sh installers/install.sh
 
 O token da API e criado automaticamente em `ipv6_settings`. Credenciais e tokens nao sao versionados.
 
+Durante a transicao, `allow_legacy_disconnect=1` mantem scripts On Down antigos funcionando. Depois de atualizar os perfis MikroTik, altere para `0` para exigir token em todas as desconexoes.
+
 ## Roadmap em desenvolvimento
 
 - filtros de investigacao por usuario, IP, porta, periodo, status e NAS;
@@ -21,4 +23,3 @@ O token da API e criado automaticamente em `ipv6_settings`. Credenciais e tokens
 - CGNAT opcional, mantendo o historico IPv4 independente;
 - importacao de mapas externos (CSV/XLSX e extracao assistida de PDF/DOCX);
 - correlacao IP publico + porta + horario com IP privado e sessao PPPoE.
-
