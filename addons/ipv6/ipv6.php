@@ -176,6 +176,25 @@ $historyStats = ipv6HistoryStats($conn, $retentionMonths);
 
 <script src="../../scripts/jquery.js"></script>
 <script src="../../scripts/mk-auth.js"></script>
+<script>
+jQuery(function($){
+    var timer=null, $input=$('input[name="busca"]'), $status=$('select[name="status"]'), $limit=$('select[name="limit"]'), $body=$('#ipv6-results'), $form=$('.ipv6-filters'), $info=$('#live-search-info');
+    if(!$input.length||!$body.length)return;
+    function safe(value){return $('<div>').text(value==null?'':value).html();}
+    function searchNow(){
+        clearTimeout(timer); $info.text('Buscando...');
+        timer=setTimeout(function(){
+            $.ajax({url:'search.php',dataType:'json',cache:false,data:{q:$input.val(),status:$status.val(),limit:$limit.val()}})
+            .done(function(data){
+                if(!data||!$.isArray(data.rows)){ $info.text('Resposta invalida da busca.'); return; }
+                var html=''; $.each(data.rows,function(_,r){html+='<tr><td><span class="'+(r.online?'online':'offline')+'">&#9679; '+(r.online?'Online':'Offline')+'</span></td><td>'+safe(r.username)+'</td><td>'+safe(r.ipv6||'—')+'</td><td>'+safe(r.framedipaddress||'—')+'</td><td>'+safe(r.callingstationid||'—')+'</td><td>'+safe(r.acctstarttime||'')+'</td><td>'+safe(r.acctstoptime||'')+'</td><td>'+safe(r.duration)+'</td><td><a href="?busca='+encodeURIComponent(r.username)+'">&#128269;</a></td></tr>';});
+                $body.html(html||'<tr><td colspan="9">Nenhum registro encontrado.</td></tr>'); $info.text(data.count+' registro(s) exibido(s).');
+            }).fail(function(xhr){$info.text('Falha na busca (HTTP '+xhr.status+').');});
+        },250);
+    }
+    $input.on('input',searchNow); $status.on('change',searchNow); $limit.on('change',searchNow); $form.on('submit',function(e){e.preventDefault();searchNow();});
+});
+</script>
 
 <style>
 .ipv6-panel {
@@ -363,6 +382,7 @@ $historyStats = ipv6HistoryStats($conn, $retentionMonths);
 <button>Buscar</button>
 </form>
 <div style="margin-top:10px"><a href="?">Limpar filtros</a><a href="?export=1">Exportar CSV</a></div>
+<div id="live-search-info" class="ipv6-muted" aria-live="polite">Digite para filtrar automaticamente.</div>
 
 <table>
 <tr>
