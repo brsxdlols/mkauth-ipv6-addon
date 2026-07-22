@@ -7,7 +7,8 @@ ipv6RunMigrations($conn);
 $user = $_GET['user'] ?? '';
 $token = $_GET['token'] ?? '';
 $expectedToken = ipv6GetSetting($conn, 'api_token', '');
-if (!$expectedToken || !hash_equals($expectedToken, $token)) {
+$allowLegacy = ipv6GetSetting($conn, 'allow_legacy_disconnect', '1') === '1';
+if ((!$token && !$allowLegacy) || ($token && (!$expectedToken || !hash_equals($expectedToken, $token)))) {
     http_response_code(403);
     exit('Token invalido');
 }
