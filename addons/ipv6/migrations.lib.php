@@ -71,5 +71,6 @@ function ipv6RunMigrations($conn)
     $stmt->bind_param('s', $token);
     $stmt->execute();
     $stmt->close();
-}
 
+    $conn->query("INSERT IGNORE INTO ipv6_settings (name, value) VALUES ('allow_legacy_disconnect', '1')");
+}
