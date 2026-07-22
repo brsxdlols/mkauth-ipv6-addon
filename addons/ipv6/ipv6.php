@@ -436,6 +436,7 @@ Próxima ➡
 </div>
 </div>
 
+<script src="live-search.js?v=20260722-2"></script>
 <?php include('../../baixo.php'); ?>
 <script src="../../menu.js.php"></script>
 <?php include('../../rodape.php'); ?>
