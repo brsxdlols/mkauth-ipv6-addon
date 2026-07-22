@@ -4,6 +4,6 @@ Options -Indexes
     Require all denied
 </FilesMatch>
 
-<FilesMatch "^(update_ipv6|ipv6|disconnect|mikrotik)\.php$">
+<FilesMatch "^(update_ipv6|ipv6|disconnect|mikrotik|cgnat|search)\.php$">
     Require all granted
 </FilesMatch>
