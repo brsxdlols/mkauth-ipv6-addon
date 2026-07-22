@@ -1,4 +1,8 @@
 <?php
+$addonsClass = file_exists(__DIR__ . '/addons.class.php')
+    ? __DIR__ . '/addons.class.php'
+    : dirname(__DIR__) . '/addons.class.php';
+include($addonsClass);
 header('Content-Type: application/json; charset=utf-8');
 if (session_status() === PHP_SESSION_NONE) { session_name('mka'); session_start(); }
 if (!isset($_SESSION['mka_logado']) && !isset($_SESSION['MKA_Logado'])) { http_response_code(403); echo json_encode(array('error'=>'Acesso negado')); exit; }
