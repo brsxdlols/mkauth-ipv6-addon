@@ -12,7 +12,7 @@ manualmente.
 Instalacao direta no terminal do MK-Auth:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/brsxdlols/mkauth-ipv6-addon/main/installers/github-install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/brsxdlols/mkauth-ipv6-addon/main/installers/install-mkauth.sh | tr -d '\r' | sh
 ```
 
 Ou por clone:
