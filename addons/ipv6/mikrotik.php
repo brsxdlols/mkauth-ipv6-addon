@@ -33,7 +33,7 @@ $onUp='{
         }
         :if (($ipv6 != "") && ($prefix != "")) do={ :set tentativas 8 } else={ :set tentativas ($tentativas + 1) }
     }
-    :if ($prefix = "") do={ :log warning ("IPv6 API: sem prefixo para " . $pppUser); :return }
+    :if ($prefix = "") do={ :log warning ("IPv6 API: prefixo nao localizado no MikroTik; consultando cadastro do MK-Auth para " . $pppUser) }
     :local data ("ipv6=".$ipv6."&prefix=".$prefix."&user=".$pppUser."&ip=".$ipv4."&token=".$token)
     :do { /tool fetch url=$url http-method=post http-header-field="Content-Type: application/x-www-form-urlencoded" http-data=$data keep-result=no } on-error={ :log error ("IPv6 API: erro ao enviar ".$pppUser) }
 }';
