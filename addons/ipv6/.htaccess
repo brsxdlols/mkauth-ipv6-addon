@@ -8,6 +8,6 @@ Options -Indexes
     Require all granted
 </FilesMatch>
 
-<FilesMatch "^(update_ipv6|ipv6|disconnect|mikrotik|cgnat|search)\.php$">
+<FilesMatch "^(update_ipv6|ipv6|disconnect|mikrotik|cgnat|import|search)\.php$">
     Require all granted
 </FilesMatch>
