@@ -4,7 +4,18 @@ Addon para correlacionar sessoes IPv4 do `radacct` com IPv6/prefixos coletados n
 
 ## Instalacao
 
-O instalador copia o addon, faz backup da versao anterior e executa migracoes idempotentes. Nao e mais necessario executar `ALTER TABLE` ou `CREATE TABLE` manualmente.
+O instalador copia o addon, faz backup da versao anterior, executa migracoes
+idempotentes e registra o atalho `Conexoes > Painel IPv4/IPv6` no `addon.js`.
+Nao e mais necessario executar `ALTER TABLE`, `CREATE TABLE` ou editar o menu
+manualmente.
+
+Instalacao direta no terminal do MK-Auth:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/brsxdlols/mkauth-ipv6-addon/main/installers/github-install.sh | sh
+```
+
+Ou por clone:
 
 ```sh
 git clone https://github.com/brsxdlols/mkauth-ipv6-addon.git
