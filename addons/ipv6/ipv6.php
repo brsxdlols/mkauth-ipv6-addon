@@ -330,10 +330,9 @@ jQuery(function($){
     <a class="active" href="ipv6.php">Painel e logs</a>
     <a href="mikrotik.php">Scripts MikroTik</a>
     <a href="cgnat.php">CGNAT</a>
-    <a href="?module=import">Importar mapeamento</a>
+    <a href="import.php">Importar mapeamento</a>
 </div>
 <?php if (($_GET['module'] ?? '') === 'cgnat'): ?><div class="ipv6-coming"><strong>Modulo CGNAT</strong><br>O gerador opcional e a correlacao por IP publico + porta + horario serao adicionados aqui. O historico IPv4/IPv6 continuara independente.</div><?php endif; ?>
-<?php if (($_GET['module'] ?? '') === 'import'): ?><div class="ipv6-coming"><strong>Importar mapeamento</strong><br>Area reservada para validar CSV, Excel, PDF e Word antes de sincronizar ranges e portas.</div><?php endif; ?>
 
 <?php if ($configMessage): ?>
 <div class="ipv6-alert"><?=$configMessage?></div>
