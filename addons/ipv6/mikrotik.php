@@ -1,10 +1,9 @@
 <?php
-$addonsClass = file_exists(__DIR__.'/addons.class.php') ? __DIR__.'/addons.class.php' : dirname(__DIR__).'/addons.class.php';
-include($addonsClass);
+require_once __DIR__.'/bootstrap.lib.php';
 require_once __DIR__.'/migrations.lib.php';
 require_once __DIR__.'/retention.lib.php';
-if (session_status() === PHP_SESSION_NONE) { session_name('mka'); session_start(); }
-if (!isset($_SESSION['mka_logado']) && !isset($_SESSION['MKA_Logado'])) { exit('Acesso negado... <a href="/admin/login.php">Fazer Login</a>'); }
+ipv6RequireMkAuthLogin();
+$Manifest=ipv6LoadAddonManifest();
 $conn=new mysqli('127.0.0.1','root','vertrigo','mkradius'); ipv6RunMigrations($conn);
 $manifestTitle=$Manifest->{'name'}??'Painel IPv4 e IPv6';
 $manifestVersion=$Manifest->{'version'}??'1.0';
@@ -28,8 +27,18 @@ $onUp='{
             :local addr [:tostr [/ipv6 address get $i address]]
             :if (([:len $addr] > 0) && ([:pick $addr 0 4] != "fe80") && ([:pick $addr 0 4] != "fc00") && ([:pick $addr 0 2] != "fd")) do={ :set ipv6 $addr }
         }
-        :foreach p in=[/ipv6 pool used find] do={
-            :if ([:tostr [/ipv6 pool used get $p info]] = $pppUser) do={ :set prefix [:tostr [/ipv6 pool used get $p prefix]] }
+        # Primeiro le o PD /64 entregue pelo DHCPv6 ao usuario.
+        :foreach b in=[/ipv6 dhcp-server binding find] do={
+            :local srv [:tostr [/ipv6 dhcp-server binding get $b server]]
+            :local delegated [:tostr [/ipv6 dhcp-server binding get $b address]]
+            :if (([:find $srv $pppUser] != nil) && ([:find $delegated "/64"] != nil)) do={ :set prefix $delegated }
+        }
+        # Fallback para pools dinamicos, sem confundir o remoto /60 com o PD.
+        :if ($prefix = "") do={
+            :foreach p in=[/ipv6 pool used find] do={
+                :local used [:tostr [/ipv6 pool used get $p prefix]]
+                :if (([:tostr [/ipv6 pool used get $p info]] = $pppUser) && ([:find $used "/64"] != nil)) do={ :set prefix $used }
+            }
         }
         :if (($ipv6 != "") && ($prefix != "")) do={ :set tentativas 8 } else={ :set tentativas ($tentativas + 1) }
     }

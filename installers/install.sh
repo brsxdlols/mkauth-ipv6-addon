@@ -26,6 +26,9 @@ cp -a "$SOURCE_DIR/addons/ipv6/." "$TARGET_DIR/"
 chown -R www-data:www-data "$TARGET_DIR" 2>/dev/null || true
 find "$TARGET_DIR" -type d -exec chmod 755 {} \;
 find "$TARGET_DIR" -type f -exec chmod 644 {} \;
+mkdir -p "$TARGET_DIR/uploads"
+chown www-data:www-data "$TARGET_DIR/uploads" 2>/dev/null || true
+chmod 750 "$TARGET_DIR/uploads"
 
 php "$TARGET_DIR/install.php"
 

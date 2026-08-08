@@ -17,6 +17,7 @@ if (ipv6ColumnExists($conn, 'sis_cliente', 'pool6')) {
           AND c.pool6 IS NOT NULL
           AND TRIM(c.pool6)<>''
           AND LOWER(TRIM(c.pool6))<>'nenhum'
+          AND TRIM(c.pool6) LIKE '%/64'
     ");
     $fixedUpdated = $conn->affected_rows;
 
@@ -31,6 +32,7 @@ if (ipv6ColumnExists($conn, 'sis_cliente', 'pool6')) {
           AND c.pool6 IS NOT NULL
           AND TRIM(c.pool6)<>''
           AND LOWER(TRIM(c.pool6))<>'nenhum'
+          AND TRIM(c.pool6) LIKE '%/64'
     ");
     echo "PD fixo sincronizado em {$fixedUpdated} sessao(oes) ativa(s).\n";
 }

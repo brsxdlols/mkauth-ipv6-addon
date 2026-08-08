@@ -55,14 +55,20 @@ $fixed->fetch();
 $fixed->close();
 $fixedPrefix = trim((string)$fixedPrefix);
 
-if ($fixedPrefix !== '' && strtolower($fixedPrefix) !== 'nenhum') {
+function ipv6IsDelegated64($value) {
+    return (bool) preg_match('/^[0-9a-f:]+\/64$/i', trim((string)$value));
+}
+
+if (ipv6IsDelegated64($fixedPrefix)) {
     $selectedPrefix = $fixedPrefix;
-} elseif ($postedPrefix !== '') {
+} elseif (ipv6IsDelegated64($postedPrefix)) {
     $selectedPrefix = $postedPrefix;
-} elseif ($postedIpv6 !== '') {
+} elseif (ipv6IsDelegated64($radiusPrefix)) {
+    $selectedPrefix = trim((string)$radiusPrefix);
+} elseif (ipv6IsDelegated64($postedIpv6)) {
     $selectedPrefix = $postedIpv6;
 } else {
-    $selectedPrefix = trim((string)$radiusPrefix);
+    $selectedPrefix = '';
 }
 
 if ($selectedPrefix === '') {

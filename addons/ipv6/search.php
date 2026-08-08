@@ -1,11 +1,8 @@
 <?php
-$addonsClass = file_exists(__DIR__ . '/addons.class.php')
-    ? __DIR__ . '/addons.class.php'
-    : dirname(__DIR__) . '/addons.class.php';
-include($addonsClass);
+require_once __DIR__ . '/bootstrap.lib.php';
 header('Content-Type: application/json; charset=utf-8');
-if (session_status() === PHP_SESSION_NONE) { session_name('mka'); session_start(); }
-if (!isset($_SESSION['mka_logado']) && !isset($_SESSION['MKA_Logado'])) { http_response_code(403); echo json_encode(array('error'=>'Acesso negado')); exit; }
+ipv6StartMkAuthSession();
+if (!ipv6HasMkAuthSession()) { http_response_code(403); echo json_encode(array('error'=>'Acesso negado')); exit; }
 $conn=new mysqli('127.0.0.1','root','vertrigo','mkradius');
 $q=trim($_GET['q']??''); $status=$_GET['status']??''; $limit=(int)($_GET['limit']??30);
 if (!in_array($limit,array(30,50,100),true)) $limit=30;

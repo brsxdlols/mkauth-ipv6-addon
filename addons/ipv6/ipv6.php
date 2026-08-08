@@ -1,19 +1,11 @@
 <?php
 // ===== MKAUTH =====
-$addonsClass = file_exists(__DIR__ . '/addons.class.php')
-    ? __DIR__ . '/addons.class.php'
-    : dirname(__DIR__) . '/addons.class.php';
-include($addonsClass);
+require_once __DIR__ . '/bootstrap.lib.php';
 require_once __DIR__ . '/migrations.lib.php';
 require_once __DIR__ . '/retention.lib.php';
 
-if (session_status() === PHP_SESSION_NONE) {
-    session_name('mka');
-    session_start();
-}
-if (!isset($_SESSION['mka_logado']) && !isset($_SESSION['MKA_Logado'])) {
-    exit('Acesso negado... <a href="/admin/login.php">Fazer Login</a>');
-}
+ipv6RequireMkAuthLogin();
+$Manifest = ipv6LoadAddonManifest();
 
 $manifestTitle = $Manifest->{'name'} ?? 'Painel IPv4 e IPv6';
 $manifestVersion = $Manifest->{'version'} ?? '1.0';
