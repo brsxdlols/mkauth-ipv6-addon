@@ -46,18 +46,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['salvar_retencao'])) {
     $configMessage = 'Limpeza mensal automatica executada: ' . $scheduledCleanup['deleted'] . ' registro(s) removido(s).';
 }
 
-// PÃ¡gina atual (pega da URL: ?page=2)
-// Se nÃ£o existir, comeÃ§a na pÃ¡gina 1
+// Página atual (pega da URL: ?page=2)
+// Se não existir, começa na página 1
 $page = max(1, intval($_GET['page'] ?? 1));
 
-// Quantidade de registros por pÃ¡gina (30, 50 ou 100)
+// Quantidade de registros por página (30, 50 ou 100)
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 30;
 
-// SeguranÃ§a: sÃ³ permite esses valores
+// Segurança: só permite esses valores
 if(!in_array($limit,[30,50,100])) $limit = 30;
 
-// Calcula de onde comeÃ§ar no banco
-// Exemplo: pÃ¡gina 2 com 30 registros â†’ comeÃ§a do 30
+// Calcula de onde começar no banco
+// Exemplo: página 2 com 30 registros → começa do 30
 $offset = ($page - 1) * $limit;
 
 
@@ -158,7 +158,7 @@ function calcDuracao($ini,$fim){
     $fim = $fim ?: date('Y-m-d H:i:s');
     return gmdate("H:i:s", strtotime($fim) - strtotime($ini));
 }
-// TOTAL DE REGISTROS (para paginaÃ§Ã£o)
+// TOTAL DE REGISTROS (para paginação)
 $totalRegistros = $conn->query("
     SELECT COUNT(*) t FROM radacct
 ")->fetch_assoc()['t'];
@@ -193,7 +193,7 @@ jQuery(function($){
             $.ajax({url:'search.php',dataType:'json',cache:false,data:{q:$input.val(),status:$status.val(),limit:$limit.val()}})
             .done(function(data){
                 if(!data||!$.isArray(data.rows)){ $info.text('Resposta invalida da busca.'); return; }
-                var html=''; $.each(data.rows,function(_,r){html+='<tr><td><span class="'+(r.online?'online':'offline')+'">&#9679; '+(r.online?'Online':'Offline')+'</span></td><td>'+safe(r.username)+'</td><td>'+safe(r.ipv6||'â€”')+'</td><td>'+safe(r.framedipaddress||'â€”')+'</td><td>'+safe(r.callingstationid||'â€”')+'</td><td>'+safe(r.acctstarttime||'')+'</td><td>'+safe(r.acctstoptime||'')+'</td><td>'+safe(r.duration)+'</td><td><a href="?busca='+encodeURIComponent(r.username)+'">&#128269;</a></td></tr>';});
+                var html=''; $.each(data.rows,function(_,r){html+='<tr><td><span class="'+(r.online?'online':'offline')+'">&#9679; '+(r.online?'Online':'Offline')+'</span></td><td>'+safe(r.username)+'</td><td>'+safe(r.ipv6||'—')+'</td><td>'+safe(r.framedipaddress||'—')+'</td><td>'+safe(r.callingstationid||'—')+'</td><td>'+safe(r.acctstarttime||'')+'</td><td>'+safe(r.acctstoptime||'')+'</td><td>'+safe(r.duration)+'</td><td><a href="?busca='+encodeURIComponent(r.username)+'">&#128269;</a></td></tr>';});
                 $body.html(html||'<tr><td colspan="11">Nenhum registro encontrado.</td></tr>'); $info.text(data.count+' registro(s) exibido(s).');
             }).fail(function(xhr){$info.text('Falha na busca (HTTP '+xhr.status+').');});
         },250);
@@ -216,7 +216,7 @@ jQuery(function($){
     margin-top:20px;
 }
 
-/* CABEÃ‡ALHO DA TABELA */
+/* CABEÇALHO DA TABELA */
 .ipv6-panel th {
     background:#1e293b;
     color:#f8fafc;
@@ -326,7 +326,7 @@ jQuery(function($){
 
 <div class="ipv6-head">
     <div>
-        <h2>ðŸŒ Painel IPv4 e IPv6</h2>
+        <h2>🌐 Painel IPv4 e IPv6</h2>
         <strong>Total online:</strong> <?=$totalOnline?>
     </div>
     <a class="ipv6-config-btn" href="?config=1" title="Configurar retencao">&#9881;</a>
@@ -393,16 +393,16 @@ jQuery(function($){
 <table>
 <tr>
 <th>Status</th>
-<th>UsuÃ¡rio</th>
+<th>Usuário</th>
 <th>IPv6</th>
 <th>IPv4</th>
 <th>IPv4 publico</th>
 <th>Portas CGNAT</th>
 <th>MAC</th>
-<th>InÃ­cio</th>
+<th>Início</th>
 <th>Fim</th>
-<th>DuraÃ§Ã£o</th>
-<th>AÃ§Ã£o</th>
+<th>Duração</th>
+<th>Ação</th>
 </tr>
 <tbody id="ipv6-results">
 
@@ -412,21 +412,21 @@ $res=$conn->query($sql);
 
 while($r=$res->fetch_assoc()){
 $status = $r['acctstoptime'] 
-    ? "<span class='offline'>â— Offline</span>"
-    : "<span class='online'>â— Online</span>";
+    ? "<span class='offline'>● Offline</span>"
+    : "<span class='online'>● Online</span>";
 
 echo "<tr>
 <td>$status</td>
 <td>{$r['username']}</td>
-<td>".($r['ipv6'] ?: 'â€”')."</td>
+<td>".($r['ipv6'] ?: '—')."</td>
 <td>{$r['framedipaddress']}</td>
 <td>".($r['public_ip'] ?: '-')."</td>
 <td>".($r['port_start'] ? $r['port_start'].'-'.$r['port_end'] : '-')."</td>
-<td>".($r['callingstationid'] ?: 'â€”')."</td>
+<td>".($r['callingstationid'] ?: '—')."</td>
 <td>{$r['acctstarttime']}</td>
 <td>{$r['acctstoptime']}</td>
 <td>".calcDuracao($r['acctstarttime'],$r['acctstoptime'])."</td>
-<td><a href='?busca={$r['username']}'>ðŸ”</a></td>
+<td><a href='?busca={$r['username']}'>🔍</a></td>
 </tr>";
 }
 ?>
@@ -435,29 +435,29 @@ echo "<tr>
 <div style="margin-top:20px;">
 
 <?php
-// BOTÃƒO "ANTERIOR"
-// SÃ³ aparece se nÃ£o estiver na primeira pÃ¡gina
+// BOTÃO "ANTERIOR"
+// Só aparece se não estiver na primeira página
 if($page > 1):
 ?>
     <a href="?page=<?=$page-1?>&limit=<?=$limit?>">
-        â¬… Anterior
+        ⬅ Anterior
     </a>
 <?php endif; ?>
 
-<!-- Mostra nÃºmero da pÃ¡gina atual -->
+<!-- Mostra número da página atual -->
 <span style="margin:0 10px;">
-    PÃ¡gina <?=$page?> de <?=$totalPaginas?>
+    Página <?=$page?> de <?=$totalPaginas?>
 </span>
 
 <?php
-// BOTÃƒO "PRÃ“XIMA"
-// SÃ³ aparece se ainda tiver mais registros
+// BOTÃO "PRÓXIMA"
+// Só aparece se ainda tiver mais registros
 if($page * $limit < $totalRegistros):
 ?>
 
 
 <a href="?page=<?=$page+1?>&limit=<?=$limit?>&busca=<?=$busca?>&inicio=<?=$inicio?>&fim=<?=$fim?>">
-PrÃ³xima âž¡
+Próxima ➡
 </a>
 
 <?php endif; ?>
@@ -476,7 +476,7 @@ PrÃ³xima âž¡
 var input=document.querySelector('input[name="busca"]'), status=document.querySelector('select[name="status"]'), limit=document.querySelector('select[name="limit"]'), body=document.getElementById('ipv6-results'), timer;
 if(!input||!body)return;
 function esc(v){var d=document.createElement('div');d.textContent=v==null?'':v;return d.innerHTML}
-function load(){clearTimeout(timer);timer=setTimeout(function(){var p=new URLSearchParams({q:input.value,status:status.value,limit:limit.value});fetch('search.php?'+p.toString(),{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(data){if(!data.rows)return;body.innerHTML=data.rows.map(function(r){return '<tr><td><span class="'+(r.online?'online':'offline')+'">&#9679; '+(r.online?'Online':'Offline')+'</span></td><td>'+esc(r.username)+'</td><td>'+esc(r.ipv6||'â€”')+'</td><td>'+esc(r.framedipaddress||'â€”')+'</td><td>'+esc(r.callingstationid||'â€”')+'</td><td>'+esc(r.acctstarttime||'')+'</td><td>'+esc(r.acctstoptime||'')+'</td><td>'+esc(r.duration)+'</td><td><a href="?busca='+encodeURIComponent(r.username)+'">&#128269;</a></td></tr>'}).join('')||'<tr><td colspan="9">Nenhum registro encontrado.</td></tr>'}).catch(function(){})},250)}
+function load(){clearTimeout(timer);timer=setTimeout(function(){var p=new URLSearchParams({q:input.value,status:status.value,limit:limit.value});fetch('search.php?'+p.toString(),{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(data){if(!data.rows)return;body.innerHTML=data.rows.map(function(r){return '<tr><td><span class="'+(r.online?'online':'offline')+'">&#9679; '+(r.online?'Online':'Offline')+'</span></td><td>'+esc(r.username)+'</td><td>'+esc(r.ipv6||'—')+'</td><td>'+esc(r.framedipaddress||'—')+'</td><td>'+esc(r.callingstationid||'—')+'</td><td>'+esc(r.acctstarttime||'')+'</td><td>'+esc(r.acctstoptime||'')+'</td><td>'+esc(r.duration)+'</td><td><a href="?busca='+encodeURIComponent(r.username)+'">&#128269;</a></td></tr>'}).join('')||'<tr><td colspan="9">Nenhum registro encontrado.</td></tr>'}).catch(function(){})},250)}
 input.addEventListener('input',load);status.addEventListener('change',load);limit.addEventListener('change',load);
 })();
 </script>
