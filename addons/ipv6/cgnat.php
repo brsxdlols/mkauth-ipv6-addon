@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__.'/bootstrap.lib.php';
 require_once __DIR__.'/migrations.lib.php';
+require_once __DIR__.'/retention.lib.php';
 require_once __DIR__.'/cgnat.lib.php';
 ipv6RequireMkAuthLogin();
 $conn=new mysqli('127.0.0.1','root','vertrigo','mkradius');
@@ -40,6 +41,6 @@ function h($v){return htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');}
 <div class="field"><label>Interface de saida WAN</label><input name="interface" placeholder="VL-200-LINK-CUIABA" value="<?=h($o['interface'])?>"></div>
 <div class="field"><label>Portas por cliente/grupo</label><input type="number" name="ports" min="256" max="16000" value="<?=h($o['ports'])?>"></div>
 <div class="field"><label>Primeira porta</label><input type="number" name="first_port" min="1" max="65000" value="<?=h($o['first_port'])?>"></div>
-</div><div class="checks"><label><input type="checkbox" name="linked" <?=$o['linked']==='1'?'checked':''?>> Vincular configuração aos logs</label><label><input type="checkbox" name="blackhole" <?=$o['blackhole']==='1'?'checked':''?>> Criar blackhole</label><label><input type="checkbox" name="nat_others" <?=$o['nat_others']==='1'?'checked':''?>> NAT para outros protocolos</label></div><button class="btn" name="generate" value="1">Gerar e visualizar script</button></form></section>
+</div><div class="checks"><label><input type="checkbox" name="linked" <?=$o['linked']==='1'?'checked':''?>> Vincular configuraÃ§Ã£o aos logs</label><label><input type="checkbox" name="blackhole" <?=$o['blackhole']==='1'?'checked':''?>> Criar blackhole</label><label><input type="checkbox" name="nat_others" <?=$o['nat_others']==='1'?'checked':''?>> NAT para outros protocolos</label></div><button class="btn" name="generate" value="1">Gerar e visualizar script</button></form></section>
 <?php if($result):?><section class="card" style="margin-top:16px"><div class="summary"><div class="metric"><strong><?=$result['public_count']?></strong>IPs publicos</div><div class="metric"><strong><?=$result['private_count']?></strong>IPs privados</div><div class="metric"><strong><?=$result['clients_per_public']?></strong>Clientes por IP</div><div class="metric"><strong><?=$result['ports']?></strong>Portas por cliente</div></div><textarea id="script" class="script" readonly><?=h($result['script'])?></textarea><div class="actions"><button class="btn" type="button" onclick="navigator.clipboard.writeText(document.getElementById('script').value)">Copiar script</button><form method="post"><?php foreach($o as $key=>$value):?><input type="hidden" name="<?=h($key)?>" value="<?=h($value)?>"><?php endforeach;?><input type="hidden" name="generate" value="1"><button class="btn download" name="download" value="1">Baixar .RSC</button></form></div></section><?php endif;?>
 </main></div><?php include('../../baixo.php'); ?><script src="../../menu.js.php"></script><?php include('../../rodape.php'); ?></body></html>
