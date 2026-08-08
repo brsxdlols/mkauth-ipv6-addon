@@ -1,6 +1,6 @@
 <?php
 
-function ipv6StartMkAuthSession(): void
+function ipv6StartMkAuthSession()
 {
     if (session_status() === PHP_SESSION_ACTIVE) {
         return;
@@ -33,7 +33,7 @@ function ipv6StartMkAuthSession(): void
     @session_start();
 }
 
-function ipv6HasMkAuthSession(): bool
+function ipv6HasMkAuthSession()
 {
     if (empty($_SESSION) || !is_array($_SESSION)) {
         return false;
@@ -46,7 +46,7 @@ function ipv6HasMkAuthSession(): bool
     return false;
 }
 
-function ipv6RequireMkAuthLogin(): void
+function ipv6RequireMkAuthLogin()
 {
     ipv6StartMkAuthSession();
     if (!ipv6HasMkAuthSession()) {
@@ -55,7 +55,7 @@ function ipv6RequireMkAuthLogin(): void
     }
 }
 
-function ipv6LoadAddonManifest(): object
+function ipv6LoadAddonManifest()
 {
     $manifest = __DIR__ . '/manifest.json';
     if (is_file($manifest)) {
