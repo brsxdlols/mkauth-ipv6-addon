@@ -1,5 +1,14 @@
 <?php
 
+// Carrega o runtime visual/oficial do MK-Auth quando presente. Algumas
+// instalacoes fornecem MKAC_BOT, Manifest e dados do topo somente aqui.
+$ipv6AddonClass = is_file(__DIR__.'/addons.class.php')
+    ? __DIR__.'/addons.class.php'
+    : dirname(__DIR__).'/addons.class.php';
+if (is_file($ipv6AddonClass)) {
+    include_once $ipv6AddonClass;
+}
+
 function ipv6StartMkAuthSession()
 {
     if (session_status() === PHP_SESSION_ACTIVE) {
