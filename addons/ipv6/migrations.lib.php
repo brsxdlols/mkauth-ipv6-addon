@@ -56,6 +56,34 @@ function ipv6RunMigrations($conn)
             version int(11) NOT NULL,
             applied_at timestamp NOT NULL DEFAULT current_timestamp(),
             PRIMARY KEY (version)
+        ) ENGINE=InnoDB DEFAULT CHARSET=latin1",
+        "CREATE TABLE IF NOT EXISTS cgnat_profiles (
+            id int(11) NOT NULL AUTO_INCREMENT,
+            name varchar(100) NOT NULL,
+            private_cidr varchar(50) NOT NULL,
+            public_cidr varchar(50) NOT NULL,
+            clients_per_public int(11) NOT NULL,
+            ports_per_client int(11) NOT NULL,
+            first_port int(11) NOT NULL,
+            last_port int(11) NOT NULL,
+            source varchar(20) NOT NULL DEFAULT 'generated',
+            active tinyint(1) NOT NULL DEFAULT 0,
+            created_at timestamp NOT NULL DEFAULT current_timestamp(),
+            PRIMARY KEY (id),
+            KEY idx_cgnat_profile_active (active, created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=latin1",
+        "CREATE TABLE IF NOT EXISTS cgnat_mappings (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            profile_id int(11) NOT NULL,
+            private_ip varchar(50) NOT NULL,
+            public_ip varchar(50) NOT NULL,
+            port_start int(11) NOT NULL,
+            port_end int(11) NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_cgnat_profile_private (profile_id, private_ip),
+            KEY idx_cgnat_private (private_ip),
+            KEY idx_cgnat_public_ports (public_ip, port_start, port_end),
+            KEY idx_cgnat_profile (profile_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=latin1"
     );
 
