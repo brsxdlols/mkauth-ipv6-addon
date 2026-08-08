@@ -128,9 +128,90 @@ function cgnatGenerate($o)
 
     return array(
         'script'=>implode("\n", $lines)."\n",
-        'public_count'=>$public['size'], 'private_count'=>$privateCount,
+        'public_count'=>$public['size'], 'public_cidr'=>$public['cidr'], 'public_start'=>$public['start'], 'private_count'=>$privateCount,
         'private_cidr'=>$private['cidr'], 'clients_per_public'=>$ratio,
         'ports'=>$ports, 'first_port'=>$firstPort, 'last_port'=>$lastMappedPort,
         'ranges'=>$ranges, 'rules'=>count($lines)
     );
+}
+
+function cgnatMappingRows($result)
+{
+    $rows = array();
+    for ($i=0; $i<$result['private_count']; $i++) {
+        $group = intdiv($i, $result['public_count']);
+        $rows[] = array(
+            'public_ip'=>cgnatIntToIp($result['public_start'] + ($i % $result['public_count'])),
+            'port_start'=>$result['ranges'][$group][0],
+            'port_end'=>$result['ranges'][$group][1],
+            'private_ip'=>cgnatIntToIp(cgnatIpToInt(explode('/', $result['private_cidr'])[0]) + $i)
+        );
+    }
+    return $rows;
+}
+
+function cgnatSaveProfile($conn, $result, $o)
+{
+    $rows = cgnatMappingRows($result);
+    $name = trim(isset($o['name']) ? $o['name'] : 'CGNAT');
+    if ($name === '') $name = 'CGNAT';
+    $conn->begin_transaction();
+    try {
+        $conn->query("UPDATE cgnat_profiles SET active=0 WHERE active=1");
+        $stmt = $conn->prepare("INSERT INTO cgnat_profiles (name,private_cidr,public_cidr,clients_per_public,ports_per_client,first_port,last_port,source,active) VALUES (?,?,?,?,?,?,?,'generated',1)");
+        $stmt->bind_param('sssiiii', $name, $result['private_cidr'], $result['public_cidr'], $result['clients_per_public'], $result['ports'], $result['first_port'], $result['last_port']);
+        if (!$stmt->execute()) throw new RuntimeException($stmt->error);
+        $profileId = $stmt->insert_id; $stmt->close();
+        $map = $conn->prepare("INSERT INTO cgnat_mappings (profile_id,private_ip,public_ip,port_start,port_end) VALUES (?,?,?,?,?)");
+        foreach ($rows as $row) {
+            $map->bind_param('issii', $profileId, $row['private_ip'], $row['public_ip'], $row['port_start'], $row['port_end']);
+            if (!$map->execute()) throw new RuntimeException($map->error);
+        }
+        $map->close(); $conn->commit();
+        return $profileId;
+    } catch (Exception $e) {
+        $conn->rollback(); throw $e;
+    }
+}
+
+function cgnatPdfText($text)
+{
+    $text = iconv('UTF-8', 'Windows-1252//TRANSLIT', (string)$text);
+    return str_replace(array('\\','(',')'), array('\\\\','\\(','\\)'), $text);
+}
+
+function cgnatBuildPdf($result, $o)
+{
+    $rows = cgnatMappingRows($result); $perPage = 38;
+    $pages = array_chunk($rows, $perPage); $objects = array();
+    $objects[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+    $objects[3] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>';
+    $objects[4] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>';
+    $kids = array(); $next = 5;
+    foreach ($pages as $pageIndex=>$pageRows) {
+        $pageObj=$next++; $streamObj=$next++; $kids[]=$pageObj.' 0 R';
+        $content="0.10 0.14 0.20 rg 0 806 595 36 re f\n";
+        $content.="BT /F2 18 Tf 0.20 0.70 0.95 rg 32 816 Td (MAPEAMENTO DAS PORTAS) Tj ET\n";
+        $subtitle=strtoupper(trim(isset($o['name'])?$o['name']:'CGNAT')).' | '.$result['private_cidr'].' > '.$result['public_cidr'].' | '.date('d/m/Y H:i');
+        $content.="BT /F1 8 Tf 0.25 0.30 0.38 rg 32 790 Td (".cgnatPdfText($subtitle).") Tj ET\n";
+        $content.="0.12 0.16 0.22 rg 28 760 539 22 re f\n";
+        $content.="BT /F2 9 Tf 1 1 1 rg 36 768 Td (IP PUBLICO) Tj 190 0 Td (RANGE DE PORTAS) Tj 190 0 Td (IP PRIVADO) Tj ET\n";
+        $y=744;
+        foreach($pageRows as $index=>$row){
+            if($index%2===0)$content.="0.94 0.96 0.98 rg 28 ".($y-4)." 539 18 re f\n";
+            $content.="BT /F1 8 Tf 0.08 0.12 0.18 rg 36 ".$y." Td (".cgnatPdfText($row['public_ip']).") Tj 190 0 Td (".$row['port_start'].' a '.$row['port_end'].") Tj 190 0 Td (".cgnatPdfText($row['private_ip']).") Tj ET\n";
+            $y-=18;
+        }
+        $footer='Pagina '.($pageIndex+1).' de '.count($pages).' | '.$result['ports'].' portas por cliente | Gerado pelo MK-Auth IPv6 Addon';
+        $content.="BT /F1 7 Tf 0.35 0.40 0.48 rg 32 24 Td (".cgnatPdfText($footer).") Tj ET\n";
+        $objects[$pageObj]='<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents '.$streamObj.' 0 R >>';
+        $objects[$streamObj]='<< /Length '.strlen($content).' >>'."\nstream\n".$content."endstream";
+    }
+    $objects[2]='<< /Type /Pages /Count '.count($kids).' /Kids ['.implode(' ',$kids).'] >>';
+    ksort($objects); $pdf="%PDF-1.4\n%CGNAT\n"; $offsets=array(0=>0);
+    foreach($objects as $id=>$body){$offsets[$id]=strlen($pdf);$pdf.=$id." 0 obj\n".$body."\nendobj\n";}
+    $xref=strlen($pdf);$max=max(array_keys($objects));$pdf.="xref\n0 ".($max+1)."\n0000000000 65535 f \n";
+    for($i=1;$i<=$max;$i++)$pdf.=sprintf('%010d 00000 n ',isset($offsets[$i])?$offsets[$i]:0)."\n";
+    $pdf.="trailer\n<< /Size ".($max+1)." /Root 1 0 R >>\nstartxref\n".$xref."\n%%EOF";
+    return $pdf;
 }
