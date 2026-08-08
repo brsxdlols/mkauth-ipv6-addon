@@ -14,6 +14,17 @@ $manifestVersion = $Manifest->{'version'} ?? '1.0';
 $conn = new mysqli("127.0.0.1","root","vertrigo","mkradius");
 ipv6RunMigrations($conn);
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['activate_cgnat'])) {
+    $profileId = (int)($_POST['cgnat_profile_id'] ?? 0);
+    $conn->begin_transaction();
+    $conn->query("UPDATE cgnat_profiles SET active=0");
+    if ($profileId > 0) $conn->query("UPDATE cgnat_profiles SET active=1 WHERE id=".$profileId);
+    $conn->commit();
+}
+$cgnatProfiles = array();
+$profileResult = $conn->query("SELECT * FROM cgnat_profiles ORDER BY created_at DESC, id DESC");
+if ($profileResult) while ($profileRow=$profileResult->fetch_assoc()) $cgnatProfiles[]=$profileRow;
+
 $retentionMonths = ipv6GetRetentionMonths($conn);
 $scheduledCleanup = ipv6RunMonthlyCleanupIfDue($conn);
 $configMessage = '';
@@ -35,18 +46,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['salvar_retencao'])) {
     $configMessage = 'Limpeza mensal automatica executada: ' . $scheduledCleanup['deleted'] . ' registro(s) removido(s).';
 }
 
-// Página atual (pega da URL: ?page=2)
-// Se não existir, começa na página 1
+// PÃ¡gina atual (pega da URL: ?page=2)
+// Se nÃ£o existir, comeÃ§a na pÃ¡gina 1
 $page = max(1, intval($_GET['page'] ?? 1));
 
-// Quantidade de registros por página (30, 50 ou 100)
+// Quantidade de registros por pÃ¡gina (30, 50 ou 100)
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 30;
 
-// Segurança: só permite esses valores
+// SeguranÃ§a: sÃ³ permite esses valores
 if(!in_array($limit,[30,50,100])) $limit = 30;
 
-// Calcula de onde começar no banco
-// Exemplo: página 2 com 30 registros → começa do 30
+// Calcula de onde comeÃ§ar no banco
+// Exemplo: pÃ¡gina 2 com 30 registros â†’ comeÃ§a do 30
 $offset = ($page - 1) * $limit;
 
 
@@ -99,11 +110,13 @@ function buildSQL($busca,$inicio,$fim,$modoResumo,$status=''){
         ON h1.session_id = h2.session_id 
         AND h1.id = h2.max_id
     ) h ON h.session_id = r.acctsessionid
+    LEFT JOIN cgnat_mappings cm ON cm.private_ip=r.framedipaddress
+      AND cm.profile_id=(SELECT id FROM cgnat_profiles WHERE active=1 ORDER BY id DESC LIMIT 1)
     ";
 
     if($modoResumo){
         $sql = "
-        SELECT r.username,r.framedipaddress,r.acctstarttime,r.acctstoptime,h.ipv6,h.callingstationid
+        SELECT r.username,r.framedipaddress,r.acctstarttime,r.acctstoptime,h.ipv6,h.callingstationid,cm.public_ip,cm.port_start,cm.port_end
         FROM radacct r
         $joinIPv6
         WHERE r.radacctid IN (
@@ -113,7 +126,7 @@ function buildSQL($busca,$inicio,$fim,$modoResumo,$status=''){
         )";
     } else {
         $sql = "
-        SELECT r.username,r.framedipaddress,r.acctstarttime,r.acctstoptime,h.ipv6,h.callingstationid
+        SELECT r.username,r.framedipaddress,r.acctstarttime,r.acctstoptime,h.ipv6,h.callingstationid,cm.public_ip,cm.port_start,cm.port_end
         FROM radacct r
         $joinIPv6
         WHERE 1=1";
@@ -123,7 +136,8 @@ function buildSQL($busca,$inicio,$fim,$modoResumo,$status=''){
         $sql .= " AND (
             r.username LIKE '%$busca%' OR
             r.framedipaddress LIKE '%$busca%' OR
-            h.ipv6 LIKE '%$busca%'
+            h.ipv6 LIKE '%$busca%' OR
+            cm.public_ip LIKE '%$busca%'".((ctype_digit($busca)) ? " OR $busca BETWEEN cm.port_start AND cm.port_end" : "")."
         )";
     }
 
@@ -144,7 +158,7 @@ function calcDuracao($ini,$fim){
     $fim = $fim ?: date('Y-m-d H:i:s');
     return gmdate("H:i:s", strtotime($fim) - strtotime($ini));
 }
-// TOTAL DE REGISTROS (para paginação)
+// TOTAL DE REGISTROS (para paginaÃ§Ã£o)
 $totalRegistros = $conn->query("
     SELECT COUNT(*) t FROM radacct
 ")->fetch_assoc()['t'];
@@ -179,8 +193,8 @@ jQuery(function($){
             $.ajax({url:'search.php',dataType:'json',cache:false,data:{q:$input.val(),status:$status.val(),limit:$limit.val()}})
             .done(function(data){
                 if(!data||!$.isArray(data.rows)){ $info.text('Resposta invalida da busca.'); return; }
-                var html=''; $.each(data.rows,function(_,r){html+='<tr><td><span class="'+(r.online?'online':'offline')+'">&#9679; '+(r.online?'Online':'Offline')+'</span></td><td>'+safe(r.username)+'</td><td>'+safe(r.ipv6||'—')+'</td><td>'+safe(r.framedipaddress||'—')+'</td><td>'+safe(r.callingstationid||'—')+'</td><td>'+safe(r.acctstarttime||'')+'</td><td>'+safe(r.acctstoptime||'')+'</td><td>'+safe(r.duration)+'</td><td><a href="?busca='+encodeURIComponent(r.username)+'">&#128269;</a></td></tr>';});
-                $body.html(html||'<tr><td colspan="9">Nenhum registro encontrado.</td></tr>'); $info.text(data.count+' registro(s) exibido(s).');
+                var html=''; $.each(data.rows,function(_,r){html+='<tr><td><span class="'+(r.online?'online':'offline')+'">&#9679; '+(r.online?'Online':'Offline')+'</span></td><td>'+safe(r.username)+'</td><td>'+safe(r.ipv6||'â€”')+'</td><td>'+safe(r.framedipaddress||'â€”')+'</td><td>'+safe(r.callingstationid||'â€”')+'</td><td>'+safe(r.acctstarttime||'')+'</td><td>'+safe(r.acctstoptime||'')+'</td><td>'+safe(r.duration)+'</td><td><a href="?busca='+encodeURIComponent(r.username)+'">&#128269;</a></td></tr>';});
+                $body.html(html||'<tr><td colspan="11">Nenhum registro encontrado.</td></tr>'); $info.text(data.count+' registro(s) exibido(s).');
             }).fail(function(xhr){$info.text('Falha na busca (HTTP '+xhr.status+').');});
         },250);
     }
@@ -202,7 +216,7 @@ jQuery(function($){
     margin-top:20px;
 }
 
-/* CABEÇALHO DA TABELA */
+/* CABEÃ‡ALHO DA TABELA */
 .ipv6-panel th {
     background:#1e293b;
     color:#f8fafc;
@@ -312,7 +326,7 @@ jQuery(function($){
 
 <div class="ipv6-head">
     <div>
-        <h2>🌐 Painel IPv4 e IPv6</h2>
+        <h2>ðŸŒ Painel IPv4 e IPv6</h2>
         <strong>Total online:</strong> <?=$totalOnline?>
     </div>
     <a class="ipv6-config-btn" href="?config=1" title="Configurar retencao">&#9881;</a>
@@ -324,6 +338,7 @@ jQuery(function($){
     <a href="cgnat.php">CGNAT</a>
     <a href="import.php">Importar mapeamento</a>
 </div>
+<?php if($cgnatProfiles):?><div class="ipv6-config" style="display:block;margin:14px 0"><form method="post"><strong>Mapeamento CGNAT usado no cruzamento:</strong> <select name="cgnat_profile_id"><option value="0">Nao usar mapeamento</option><?php foreach($cgnatProfiles as $profile):?><option value="<?=$profile['id']?>" <?=$profile['active']?'selected':''?>>Usar CGNAT gerado em <?=date('d/m/Y H:i',strtotime($profile['created_at']))?> - privado <?=$profile['private_cidr']?> - publico <?=$profile['public_cidr']?> - <?=$profile['ports_per_client']?> portas</option><?php endforeach;?></select> <button name="activate_cgnat" value="1">Aplicar</button></form></div><?php endif;?>
 <?php if (($_GET['module'] ?? '') === 'cgnat'): ?><div class="ipv6-coming"><strong>Modulo CGNAT</strong><br>O gerador opcional e a correlacao por IP publico + porta + horario serao adicionados aqui. O historico IPv4/IPv6 continuara independente.</div><?php endif; ?>
 
 <?php if ($configMessage): ?>
@@ -378,14 +393,16 @@ jQuery(function($){
 <table>
 <tr>
 <th>Status</th>
-<th>Usuário</th>
+<th>UsuÃ¡rio</th>
 <th>IPv6</th>
 <th>IPv4</th>
+<th>IPv4 publico</th>
+<th>Portas CGNAT</th>
 <th>MAC</th>
-<th>Início</th>
+<th>InÃ­cio</th>
 <th>Fim</th>
-<th>Duração</th>
-<th>Ação</th>
+<th>DuraÃ§Ã£o</th>
+<th>AÃ§Ã£o</th>
 </tr>
 <tbody id="ipv6-results">
 
@@ -395,19 +412,21 @@ $res=$conn->query($sql);
 
 while($r=$res->fetch_assoc()){
 $status = $r['acctstoptime'] 
-    ? "<span class='offline'>● Offline</span>"
-    : "<span class='online'>● Online</span>";
+    ? "<span class='offline'>â— Offline</span>"
+    : "<span class='online'>â— Online</span>";
 
 echo "<tr>
 <td>$status</td>
 <td>{$r['username']}</td>
-<td>".($r['ipv6'] ?: '—')."</td>
+<td>".($r['ipv6'] ?: 'â€”')."</td>
 <td>{$r['framedipaddress']}</td>
-<td>".($r['callingstationid'] ?: '—')."</td>
+<td>".($r['public_ip'] ?: '-')."</td>
+<td>".($r['port_start'] ? $r['port_start'].'-'.$r['port_end'] : '-')."</td>
+<td>".($r['callingstationid'] ?: 'â€”')."</td>
 <td>{$r['acctstarttime']}</td>
 <td>{$r['acctstoptime']}</td>
 <td>".calcDuracao($r['acctstarttime'],$r['acctstoptime'])."</td>
-<td><a href='?busca={$r['username']}'>🔍</a></td>
+<td><a href='?busca={$r['username']}'>ðŸ”</a></td>
 </tr>";
 }
 ?>
@@ -416,29 +435,29 @@ echo "<tr>
 <div style="margin-top:20px;">
 
 <?php
-// BOTÃO "ANTERIOR"
-// Só aparece se não estiver na primeira página
+// BOTÃƒO "ANTERIOR"
+// SÃ³ aparece se nÃ£o estiver na primeira pÃ¡gina
 if($page > 1):
 ?>
     <a href="?page=<?=$page-1?>&limit=<?=$limit?>">
-        ⬅ Anterior
+        â¬… Anterior
     </a>
 <?php endif; ?>
 
-<!-- Mostra número da página atual -->
+<!-- Mostra nÃºmero da pÃ¡gina atual -->
 <span style="margin:0 10px;">
-    Página <?=$page?> de <?=$totalPaginas?>
+    PÃ¡gina <?=$page?> de <?=$totalPaginas?>
 </span>
 
 <?php
-// BOTÃO "PRÓXIMA"
-// Só aparece se ainda tiver mais registros
+// BOTÃƒO "PRÃ“XIMA"
+// SÃ³ aparece se ainda tiver mais registros
 if($page * $limit < $totalRegistros):
 ?>
 
 
 <a href="?page=<?=$page+1?>&limit=<?=$limit?>&busca=<?=$busca?>&inicio=<?=$inicio?>&fim=<?=$fim?>">
-Próxima ➡
+PrÃ³xima âž¡
 </a>
 
 <?php endif; ?>
@@ -457,8 +476,19 @@ Próxima ➡
 var input=document.querySelector('input[name="busca"]'), status=document.querySelector('select[name="status"]'), limit=document.querySelector('select[name="limit"]'), body=document.getElementById('ipv6-results'), timer;
 if(!input||!body)return;
 function esc(v){var d=document.createElement('div');d.textContent=v==null?'':v;return d.innerHTML}
-function load(){clearTimeout(timer);timer=setTimeout(function(){var p=new URLSearchParams({q:input.value,status:status.value,limit:limit.value});fetch('search.php?'+p.toString(),{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(data){if(!data.rows)return;body.innerHTML=data.rows.map(function(r){return '<tr><td><span class="'+(r.online?'online':'offline')+'">&#9679; '+(r.online?'Online':'Offline')+'</span></td><td>'+esc(r.username)+'</td><td>'+esc(r.ipv6||'—')+'</td><td>'+esc(r.framedipaddress||'—')+'</td><td>'+esc(r.callingstationid||'—')+'</td><td>'+esc(r.acctstarttime||'')+'</td><td>'+esc(r.acctstoptime||'')+'</td><td>'+esc(r.duration)+'</td><td><a href="?busca='+encodeURIComponent(r.username)+'">&#128269;</a></td></tr>'}).join('')||'<tr><td colspan="9">Nenhum registro encontrado.</td></tr>'}).catch(function(){})},250)}
+function load(){clearTimeout(timer);timer=setTimeout(function(){var p=new URLSearchParams({q:input.value,status:status.value,limit:limit.value});fetch('search.php?'+p.toString(),{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(data){if(!data.rows)return;body.innerHTML=data.rows.map(function(r){return '<tr><td><span class="'+(r.online?'online':'offline')+'">&#9679; '+(r.online?'Online':'Offline')+'</span></td><td>'+esc(r.username)+'</td><td>'+esc(r.ipv6||'â€”')+'</td><td>'+esc(r.framedipaddress||'â€”')+'</td><td>'+esc(r.callingstationid||'â€”')+'</td><td>'+esc(r.acctstarttime||'')+'</td><td>'+esc(r.acctstoptime||'')+'</td><td>'+esc(r.duration)+'</td><td><a href="?busca='+encodeURIComponent(r.username)+'">&#128269;</a></td></tr>'}).join('')||'<tr><td colspan="9">Nenhum registro encontrado.</td></tr>'}).catch(function(){})},250)}
 input.addEventListener('input',load);status.addEventListener('change',load);limit.addEventListener('change',load);
+})();
+</script>
+
+<script>
+(function(){
+var input=document.querySelector('input[name="busca"]'),status=document.querySelector('select[name="status"]'),limit=document.querySelector('select[name="limit"]'),body=document.getElementById('ipv6-results'),info=document.getElementById('live-search-info'),timer;
+if(!input||!body)return;
+function esc(v){var d=document.createElement('div');d.textContent=v==null?'':v;return d.innerHTML}
+function render(r){return '<tr><td><span class="'+(r.online?'online':'offline')+'">&#9679; '+(r.online?'Online':'Offline')+'</span></td><td>'+esc(r.username)+'</td><td>'+esc(r.ipv6||'-')+'</td><td>'+esc(r.framedipaddress||'-')+'</td><td>'+esc(r.public_ip||'-')+'</td><td>'+esc(r.port_start?(r.port_start+'-'+r.port_end):'-')+'</td><td>'+esc(r.callingstationid||'-')+'</td><td>'+esc(r.acctstarttime||'')+'</td><td>'+esc(r.acctstoptime||'')+'</td><td>'+esc(r.duration)+'</td><td><a href="?busca='+encodeURIComponent(r.username)+'">&#128269;</a></td></tr>'}
+function load(e){if(e){e.stopImmediatePropagation()}clearTimeout(timer);if(info)info.textContent='Buscando...';timer=setTimeout(function(){var p=new URLSearchParams({q:input.value,status:status.value,limit:limit.value});fetch('search.php?'+p.toString(),{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(data){var rows=data.rows||[];body.innerHTML=rows.map(render).join('')||'<tr><td colspan="11">Nenhum registro encontrado.</td></tr>';if(info)info.textContent=rows.length+' registro(s) exibido(s).'}).catch(function(){if(info)info.textContent='Falha na busca.'})},250)}
+input.addEventListener('input',load,true);status.addEventListener('change',load,true);limit.addEventListener('change',load,true);
 })();
 </script>
 
