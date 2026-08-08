@@ -1,55 +1,57 @@
 <?php
-$addonsClass=file_exists(__DIR__.'/addons.class.php')?__DIR__.'/addons.class.php':dirname(__DIR__).'/addons.class.php';
-include($addonsClass);
+require_once __DIR__.'/bootstrap.lib.php';
 require_once __DIR__.'/migrations.lib.php';
-if(session_status()===PHP_SESSION_NONE){session_name('mka');session_start();}
-if(!isset($_SESSION['mka_logado'])&&!isset($_SESSION['MKA_Logado']))exit('Acesso negado');
-$manifestTitle=$Manifest->{'name'}??'Painel IPv4 e IPv6';
-$manifestVersion=$Manifest->{'version'}??'1.0';
+require_once __DIR__.'/retention.lib.php';
+require_once __DIR__.'/cgnat.lib.php';
+ipv6RequireMkAuthLogin();
 $conn=new mysqli('127.0.0.1','root','vertrigo','mkradius');
 ipv6RunMigrations($conn);
-$fields=array(
- 'cgnat_mode'=>'linked','cgnat_private_network'=>'100.64.0.0','cgnat_public_network'=>'',
- 'cgnat_ratio'=>'32','cgnat_routeros'=>'7','cgnat_interface'=>'pppoe-out1',
- 'cgnat_address_list'=>'CGNAT-CLIENTES','cgnat_blackhole'=>'1','cgnat_log'=>'0'
-);
-$saved='';$error='';
+
+$defaults=array('name'=>'CGNAT','public'=>'','private_start'=>'100.64.0.0','ratio'=>'32','type'=>'netmap','protocol'=>'tcp_udp','interface'=>'','ignore'=>'','routeros'=>'7','blackhole'=>'0','nat_others'=>'1','linked'=>'1');
+$o=$defaults;
+foreach($o as $key=>$value){$o[$key]=isset($_POST[$key])?trim((string)$_POST[$key]):ipv6GetSetting($conn,'cgnat_'.$key,$value);}
+foreach(array('blackhole','nat_others','linked') as $check)$o[$check]=isset($_POST['generate'])?(isset($_POST[$check])?'1':'0'):$o[$check];
+$result=null;$error='';$message='';$mappingRows=array();
 if($_SERVER['REQUEST_METHOD']==='POST'){
- $private=trim($_POST['private_network']??'');$public=trim($_POST['public_network']??'');
- if(strpos($private,'/')!==false)$error='Informe somente o IP privado inicial, sem /prefixo.';
- elseif(!filter_var($private,FILTER_VALIDATE_IP,FILTER_FLAG_IPV4))$error='IP privado inicial invalido.';
- elseif(!preg_match('/^((?:\d{1,3}\.){3}\d{1,3})\/(\d|[12]\d|3[0-2])$/',$public,$m)||!filter_var($m[1],FILTER_VALIDATE_IP,FILTER_FLAG_IPV4))$error='Prefixo publico invalido.';
- if(!$error){
-  $values=array(
-   'cgnat_mode'=>(($_POST['mode']??'linked')==='only'?'only':'linked'),
-   'cgnat_private_network'=>$private,'cgnat_public_network'=>$public,
-   'cgnat_ratio'=>(string)(int)($_POST['ratio']??32),
-   'cgnat_routeros'=>(($_POST['routeros']??'7')==='6'?'6':'7'),
-   'cgnat_interface'=>trim($_POST['interface']??''),
-   'cgnat_address_list'=>trim($_POST['address_list']??''),
-   'cgnat_blackhole'=>isset($_POST['blackhole'])?'1':'0',
-   'cgnat_log'=>isset($_POST['rule_log'])?'1':'0'
-  );
-  foreach($values as $k=>$v)ipv6SaveSetting($conn,$k,$v);
-  $saved='Configuracao salva. Use Gerar script para revisar antes de aplicar no MikroTik.';
- }
+ try{
+  $result=cgnatGenerate($o);
+  foreach($o as $key=>$value)ipv6SaveSetting($conn,'cgnat_'.$key,$value);
+  if(isset($_POST['download'])){
+   $filename=preg_replace('/[^a-z0-9_-]+/i','-',strtolower($o['name'])).'.rsc';
+   header('Content-Type: text/plain; charset=utf-8');header('Content-Disposition: attachment; filename="'.$filename.'"');echo $result['script'];exit;
+  }
+  if(isset($_POST['download_pdf'])){
+   $filename=preg_replace('/[^a-z0-9_-]+/i','-',strtolower($o['name'])).'-mapeamento.pdf';
+   header('Content-Type: application/pdf');header('Content-Disposition: attachment; filename="'.$filename.'"');echo cgnatBuildPdf($result,$o);exit;
+  }
+  if(isset($_POST['save_mapping'])){
+   $profileId=cgnatSaveProfile($conn,$result,$o);
+   $message='Mapeamento salvo e ativado no painel. Identificacao #'.$profileId.'.';
+  }
+  $mappingRows=cgnatMappingRows($result);
+ }catch(Exception $e){$error=$e->getMessage();}
 }
-foreach($fields as $k=>$default)$$k=ipv6GetSetting($conn,$k,$default);
+function h($v){return htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');}
 ?>
-<!DOCTYPE html><html lang="pt-BR" class="has-navbar-fixed-top"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link href="../../estilos/mk-auth.css" rel="stylesheet">
-<style>
-html,body{overflow-x:hidden}.wrap{position:relative;left:50%;transform:translateX(-50%);width:calc(100vw - 32px);max-width:1800px;box-sizing:border-box;margin:20px 0;background:#0f172a;color:#e2e8f0;padding:16px;border-radius:10px}.nav{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0 22px}.nav a{padding:10px 14px;border-radius:7px;background:#1e293b;color:#e2e8f0;text-decoration:none;border:1px solid #26364d}.nav a.active{background:#2563eb}.card{background:#111c31;border:1px solid #334155;border-radius:9px;padding:16px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.field label{display:block;font-weight:bold;margin-bottom:5px}.field input,.field select{width:100%;padding:10px;box-sizing:border-box;border:1px solid #475569;border-radius:6px;background:#f8fafc;color:#0f172a}.choices{display:flex;gap:18px;flex-wrap:wrap;margin:0 0 18px}.checks{display:flex;gap:24px;flex-wrap:wrap;margin-top:16px}.save{margin-top:16px;background:#22c55e;color:#fff;border:0;padding:10px 18px;border-radius:7px;cursor:pointer}.ok,.err,.calc,.note{padding:12px;margin:12px 0;border-radius:7px}.ok{background:#16351f;border:1px solid #22c55e}.err{background:#491b1b;border:1px solid #ef4444}.calc{background:#10243d;border:1px solid #38bdf8}.note{background:#422006;border:1px solid #d97706}@media(max-width:750px){.wrap{width:calc(100vw - 20px)}.grid{grid-template-columns:1fr}}
-</style></head><body><?php include('../../topo.php'); ?><div class="container"><div class="wrap"><h2>Gerador CGNAT</h2><div class="nav"><a href="ipv6.php">Painel e logs</a><a href="mikrotik.php">Scripts MikroTik</a><a class="active" href="cgnat.php">CGNAT</a><a href="import.php">Importar mapeamento</a></div>
-<?php if($saved):?><div class="ok"><?=htmlspecialchars($saved)?></div><?php endif;?><?php if($error):?><div class="err"><?=htmlspecialchars($error)?></div><?php endif;?>
-<div class="card"><form method="post"><div class="choices"><strong>Finalidade:</strong><label><input type="radio" name="mode" value="linked" <?=($cgnat_mode==='linked'?'checked':'')?>> Gerar CGNAT e vincular com os logs</label><label><input type="radio" name="mode" value="only" <?=($cgnat_mode==='only'?'checked':'')?>> Gerar apenas o script CGNAT</label></div>
-<div class="grid">
-<div class="field"><label>IP privado inicial (sem /)</label><input id="private_network" name="private_network" value="<?=htmlspecialchars($cgnat_private_network)?>" placeholder="100.64.0.0"></div>
-<div class="field"><label>Prefixo publico</label><input id="public_network" name="public_network" value="<?=htmlspecialchars($cgnat_public_network)?>" placeholder="200.200.200.0/24"></div>
-<div class="field"><label>Privados por IP publico</label><select id="ratio" name="ratio"><?php foreach(array(4,8,16,32,64,128) as $n):?><option value="<?=$n?>" <?=((int)$cgnat_ratio===$n?'selected':'')?>><?=$n?> clientes</option><?php endforeach;?></select></div>
-<div class="field"><label>RouterOS</label><select name="routeros"><option value="6" <?=($cgnat_routeros==='6'?'selected':'')?>>Versao 6</option><option value="7" <?=($cgnat_routeros==='7'?'selected':'')?>>Versao 7</option></select></div>
-<div class="field"><label>Interface de saida WAN</label><input name="interface" value="<?=htmlspecialchars($cgnat_interface)?>" placeholder="pppoe-out1 ou sfp-sfpplus1"></div>
-<div class="field"><label>Nome da address-list</label><input name="address_list" value="<?=htmlspecialchars($cgnat_address_list)?>" placeholder="CGNAT-CLIENTES"></div>
-</div><div class="checks"><label><input type="checkbox" name="blackhole" value="1" <?=($cgnat_blackhole==='1'?'checked':'')?>> Criar rota blackhole</label><label><input type="checkbox" name="rule_log" value="1" <?=($cgnat_log==='1'?'checked':'')?>> Ativar log nas regras</label></div>
-<div id="calculation" class="calc">Preencha os campos para calcular.</div><button class="save">Salvar e preparar script</button></form><div class="note">Nenhuma regra e aplicada automaticamente. O script sera exibido para revisao e copia antes de enviar ao MikroTik.</div></div></div></div>
-<script>function ipToInt(ip){var p=ip.split('.');if(p.length!==4)return null;var n=0;for(var i=0;i<4;i++){var x=Number(p[i]);if(!Number.isInteger(x)||x<0||x>255)return null;n=n*256+x}return n}function intToIp(n){return[Math.floor(n/16777216)%256,Math.floor(n/65536)%256,Math.floor(n/256)%256,n%256].join('.')}function calculate(){var priv=document.getElementById('private_network').value.trim(),pub=document.getElementById('public_network').value.trim(),ratio=Number(document.getElementById('ratio').value),box=document.getElementById('calculation'),m=pub.match(/^(.+)\/(\d{1,2})$/),start=ipToInt(priv);if(!m||start===null||ipToInt(m[1])===null||Number(m[2])>32){box.textContent='Informe o IP privado inicial sem / e o prefixo publico com /.';return}var count=Math.pow(2,32-Number(m[2])),clients=count*ratio,end=start+clients-1;if(end>4294967295){box.textContent='O range ultrapassa o limite IPv4.';return}box.innerHTML='<strong>Calculo:</strong> '+count.toLocaleString('pt-BR')+' IPs publicos x '+ratio+' = <strong>'+clients.toLocaleString('pt-BR')+' IPs privados</strong><br>Range: <strong>'+priv+' ate '+intToIp(end)+'</strong>'}['private_network','public_network','ratio'].forEach(function(id){document.getElementById(id).addEventListener('input',calculate)});calculate();</script>
-<?php include('../../baixo.php'); ?><script src="../../menu.js.php"></script><?php include('../../rodape.php'); ?></body></html>
+<!DOCTYPE html><html lang="pt-BR" class="has-navbar-fixed-top"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link href="../../estilos/mk-auth.css" rel="stylesheet"><link href="../../estilos/font-awesome.css" rel="stylesheet"><script src="../../scripts/jquery.js"></script><script src="../../scripts/mk-auth.js"></script>
+<style>html,body{overflow-x:hidden}.wrap{position:relative;left:50%;transform:translateX(-50%);width:calc(100vw - 32px);max-width:1800px;box-sizing:border-box;margin:20px 0;background:#f8fbff;color:#19324d;padding:20px;border:1px solid #bfdbef;border-radius:12px;box-shadow:0 8px 24px rgba(15,23,42,.08)}.wrap h2{color:#102a43}.nav{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0 22px}.nav a{padding:10px 14px;border-radius:7px;background:#e1f1fb;color:#173b57;text-decoration:none;border:1px solid #b8dcef;font-weight:600}.nav a.active{background:#38a9dc;color:#fff}.card{background:#fff;border:1px solid #bdd8ea;border-radius:10px;padding:18px}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.field label{display:block;font-weight:700;margin-bottom:6px;color:#244761}.field input,.field select{width:100%;box-sizing:border-box;padding:11px;border:1px solid #8bbbd5;border-radius:7px;background:#fff;color:#102a43}.hint{color:#486b82;margin:10px 0 0}.advanced{margin-top:16px;border:1px solid #b8d8e9;border-radius:8px;padding:13px;background:#f4faff}.advanced summary{cursor:pointer;color:#1677a6;font-weight:700}.checks{display:flex;gap:22px;flex-wrap:wrap;margin:18px 0;color:#244761}.btn{border:0;border-radius:7px;padding:11px 18px;color:#fff;background:#208fc5;cursor:pointer;font-weight:700}.btn.download{background:#18a86b}.btn.secondary{background:#526d82}.alert,.ok{padding:12px;border-radius:7px;margin:12px 0}.alert{background:#fff1f1;border:1px solid #e56262;color:#842929}.ok{background:#e9fff4;border:1px solid #35b77b;color:#155f42}.summary{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:18px 0}.metric{background:#eaf6fd;border:1px solid #b7dcef;padding:13px;border-radius:8px;text-align:center;color:#486b82}.metric strong{display:block;font-size:20px;color:#1677a6}.script{width:100%;height:340px;box-sizing:border-box;background:#0c1830;color:#d1fae5;border:1px solid #456078;border-radius:8px;padding:13px;font:12px monospace;white-space:pre-wrap;overflow-wrap:anywhere;overflow-x:hidden}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.mapping{margin-top:18px}.mapping table{width:100%;border-collapse:collapse;background:#fff}.mapping th{background:#19324d;color:#fff;padding:10px;text-align:left}.mapping td{padding:8px 10px;border-bottom:1px solid #d8e6ef}.mapping tbody tr:nth-child(odd){background:#f0f5f8}.mapping td:last-child{color:#d62828;font-weight:700}.print-title{font-size:28px;color:#19324d;margin:8px 0}.print-meta{color:#526d82;margin-bottom:16px}@media(max-width:950px){.grid{grid-template-columns:1fr 1fr}.summary{grid-template-columns:1fr 1fr}}@media(max-width:620px){.wrap{width:calc(100vw - 18px)}.grid{grid-template-columns:1fr}.summary{grid-template-columns:1fr}}@media print{body>*{display:none!important}.mapping-print{display:block!important;position:absolute;inset:0}.mapping-actions{display:none}.mapping table{font-size:10px}}</style></head><body>
+<?php include('../../topo.php'); ?><div class="container"><main class="wrap"><h2>Gerador CGNAT para MikroTik</h2><div class="nav"><a href="ipv6.php">Painel e logs</a><a href="mikrotik.php">Scripts MikroTik</a><a class="active" href="cgnat.php">CGNAT</a><a href="import.php">Importar mapeamento</a></div>
+<?php if($error):?><div class="alert"><?=h($error)?></div><?php endif;?>
+<?php if($message):?><div class="ok"><?=h($message)?></div><?php endif;?>
+<section class="card"><form method="post"><div class="grid">
+<div class="field"><label>IP privado inicial (sem /)</label><input name="private_start" placeholder="100.64.0.0" value="<?=h($o['private_start'])?>" required></div>
+<div class="field"><label>Bloco IPv4 publico</label><input name="public" placeholder="45.228.151.112/29" value="<?=h($o['public'])?>" required></div>
+<div class="field"><label>1 IP publico para quantos privados?</label><select name="ratio" required><?php foreach(array(4=>'~16.128 portas',8=>'~8.064 portas',16=>'~4.032 portas',32=>'~2.016 portas',64=>'~1.008 portas',128=>'~504 portas (nao recomendado)',256=>'~252 portas (nao recomendado)') as $ratio=>$label):?><option value="<?=$ratio?>" <?=((int)$o['ratio']===$ratio)?'selected':''?>><?=$ratio?> clientes [<?=$label?>]</option><?php endforeach;?></select></div>
+</div><p class="hint">O addon calcula automaticamente o bloco privado, a primeira porta e todas as faixas. Nenhuma faixa e digitada manualmente.</p>
+<details class="advanced"><summary>Opcoes avancadas (opcionais)</summary><div class="grid" style="margin-top:14px">
+<div class="field"><label>Nome do CGNAT / chain</label><input name="name" maxlength="16" value="<?=h($o['name'])?>"></div>
+<div class="field"><label>Tipo do CGNAT</label><select name="type"><option value="netmap" <?=$o['type']==='netmap'?'selected':''?>>NETMAP</option><option value="src-nat" <?=$o['type']==='src-nat'?'selected':''?>>SRC-NAT</option></select></div>
+<div class="field"><label>Protocolos</label><select name="protocol"><option value="tcp_udp" <?=$o['protocol']==='tcp_udp'?'selected':''?>>TCP + UDP (recomendado)</option><option value="tcp" <?=$o['protocol']==='tcp'?'selected':''?>>Somente TCP</option></select></div>
+<div class="field"><label>Interface de saida WAN</label><input name="interface" placeholder="VL-200-LINK-CUIABA" value="<?=h($o['interface'])?>"></div>
+<div class="field"><label>Destino que nao deve usar NAT</label><input name="ignore" placeholder="10.0.0.0/8 ou LISTA_SERVIDORES" value="<?=h($o['ignore'])?>"></div>
+<div class="field"><label>RouterOS</label><select name="routeros"><option value="6" <?=$o['routeros']==='6'?'selected':''?>>Versao 6</option><option value="7" <?=$o['routeros']==='7'?'selected':''?>>Versao 7</option></select></div>
+</div><div class="checks"><label><input type="checkbox" name="linked" <?=$o['linked']==='1'?'checked':''?>> Vincular configuracao aos logs</label><label><input type="checkbox" name="blackhole" <?=$o['blackhole']==='1'?'checked':''?>> Criar blackhole</label><label><input type="checkbox" name="nat_others" <?=$o['nat_others']==='1'?'checked':''?>> NAT para outros protocolos</label></div></details>
+<button class="btn" style="margin-top:16px" name="generate" value="1">Calcular, validar e gerar script</button></form></section>
+<?php if($result):?><section class="card" style="margin-top:16px"><div class="summary"><div class="metric"><strong><?=$result['public_count']?></strong>IPs publicos</div><div class="metric"><strong><?=$result['private_count']?></strong>IPs privados<br><?=h($result['private_cidr'])?></div><div class="metric"><strong><?=$result['clients_per_public']?></strong>Clientes por IP</div><div class="metric"><strong><?=$result['ports']?></strong>Portas por cliente</div><div class="metric"><strong><?=$result['first_port']?>-<?=$result['last_port']?></strong>Faixa utilizada</div></div><textarea id="script" class="script" readonly><?=h($result['script'])?></textarea><div class="actions"><button class="btn" type="button" onclick="navigator.clipboard.writeText(document.getElementById('script').value)">Copiar script</button><form method="post"><?php foreach($o as $key=>$value):?><input type="hidden" name="<?=h($key)?>" value="<?=h($value)?>"><?php endforeach;?><input type="hidden" name="generate" value="1"><button class="btn download" name="download" value="1">Baixar .RSC</button><button class="btn download" name="download_pdf" value="1">Baixar PDF</button><button class="btn" name="save_mapping" value="1">Salvar e usar no painel</button></form></div></section>
+<section class="card mapping mapping-print"><div class="print-title">MAPEAMENTO DAS PORTAS</div><div class="print-meta"><?=h(strtoupper($o['name']))?> | <?=h($result['private_cidr'])?> &gt; <?=h($result['public_cidr'])?> | <?=date('d/m/Y H:i')?></div><div class="actions mapping-actions"><button class="btn secondary" type="button" onclick="window.print()">Imprimir / salvar pela pagina</button><button class="btn" type="button" onclick="navigator.clipboard.writeText(document.getElementById('mapping-copy').innerText)">Copiar tabela</button></div><table id="mapping-copy"><thead><tr><th>IP Publico</th><th>Range de Portas</th><th>IP Privado</th></tr></thead><tbody><?php foreach($mappingRows as $row):?><tr><td><?=h($row['public_ip'])?></td><td><?=$row['port_start']?> a <?=$row['port_end']?></td><td><?=h($row['private_ip'])?></td></tr><?php endforeach;?></tbody></table></section><?php endif;?>
+</main></div><?php include('../../baixo.php'); ?><script src="../../menu.js.php"></script><?php include('../../rodape.php'); ?></body></html>

@@ -1,8 +1,7 @@
 <?php
-$addonsClass=file_exists(__DIR__.'/addons.class.php')?__DIR__.'/addons.class.php':dirname(__DIR__).'/addons.class.php';
-include($addonsClass);
-if(session_status()===PHP_SESSION_NONE){session_name('mka');session_start();}
-if(!isset($_SESSION['mka_logado'])&&!isset($_SESSION['MKA_Logado']))exit('Acesso negado');
+require_once __DIR__.'/bootstrap.lib.php';
+ipv6RequireMkAuthLogin();
+$Manifest=ipv6LoadAddonManifest();
 $manifestTitle=$Manifest->{'name'}??'Painel IPv4 e IPv6';
 $manifestVersion=$Manifest->{'version'}??'1.0';
 $message='';$error='';$preview=array();
