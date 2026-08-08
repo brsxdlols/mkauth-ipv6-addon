@@ -1,12 +1,12 @@
 <?php
 
-function cgnatIpToInt(string $ip): ?int
+function cgnatIpToInt($ip)
 {
     $value = ip2long($ip);
     return $value === false ? null : (int) sprintf('%u', $value);
 }
 
-function cgnatIntToIp(int $value): string
+function cgnatIntToIp($value)
 {
     if ($value > 2147483647) {
         $value -= 4294967296;
@@ -14,7 +14,7 @@ function cgnatIntToIp(int $value): string
     return long2ip($value);
 }
 
-function cgnatNetwork(string $cidr): ?array
+function cgnatNetwork($cidr)
 {
     if (!preg_match('/^([^\/]+)\/(\d|[12]\d|3[0-2])$/', trim($cidr), $m)) return null;
     $ip = cgnatIpToInt($m[1]);
@@ -25,7 +25,7 @@ function cgnatNetwork(string $cidr): ?array
     return array('ip' => cgnatIntToIp($network), 'prefix' => $prefix, 'size' => $size, 'start' => $network, 'cidr' => cgnatIntToIp($network).'/'.$prefix);
 }
 
-function cgnatGenerate(array $o): array
+function cgnatGenerate($o)
 {
     $public = cgnatNetwork($o['public']);
     $private = cgnatNetwork($o['private']);
