@@ -73,9 +73,9 @@ function cgnatGenerate($o)
         'size'=>$privateCount,
         'prefix'=>$privatePrefix
     );
-    $name = strtoupper(preg_replace('/[^a-zA-Z0-9_-]+/', '-', !empty($o['name']) ? $o['name'] : 'PRINCIPAL'));
+    $name = strtoupper(preg_replace('/[^a-zA-Z0-9_-]+/', '-', !empty($o['name']) ? $o['name'] : '001'));
     $name = trim($name, '-_');
-    if ($name === '') $name = 'PRINCIPAL';
+    if ($name === '') $name = '001';
     $chain = substr('CGNAT-'.$name, 0, 28);
     $comment = 'VPSCLOUD-'.$chain;
     $wan = trim(isset($o['interface']) ? $o['interface'] : '');
@@ -162,20 +162,39 @@ function cgnatMappingRows($result)
     return $rows;
 }
 
-function cgnatSaveProfile($conn, $result, $o)
+function cgnatActivateProfile($conn, $profileId)
 {
-    $rows = cgnatMappingRows($result);
-    $name = trim(isset($o['name']) ? $o['name'] : 'CGNAT');
-    if ($name === '') $name = 'CGNAT';
+    $profileId = (int)$profileId;
+    if ($profileId < 1) throw new InvalidArgumentException('Perfil CGNAT invalido.');
     $conn->begin_transaction();
     try {
         $conn->query("UPDATE cgnat_profile_periods SET ended_at=NOW() WHERE ended_at IS NULL");
         $conn->query("UPDATE cgnat_profiles SET active=0 WHERE active=1");
-        $stmt = $conn->prepare("INSERT INTO cgnat_profiles (name,private_cidr,public_cidr,clients_per_public,ports_per_client,first_port,last_port,source,active) VALUES (?,?,?,?,?,?,?,'generated',1)");
-        $stmt->bind_param('sssiiii', $name, $result['private_cidr'], $result['public_cidr'], $result['clients_per_public'], $result['ports'], $result['first_port'], $result['last_port']);
+        if (!$conn->query("UPDATE cgnat_profiles SET active=1 WHERE id=".$profileId) || $conn->affected_rows !== 1) throw new RuntimeException('Perfil CGNAT nao encontrado.');
+        if (!$conn->query("INSERT INTO cgnat_profile_periods (profile_id,started_at) VALUES (".$profileId.",NOW())")) throw new RuntimeException($conn->error);
+        $conn->commit();
+    } catch (Exception $e) {
+        $conn->rollback(); throw $e;
+    }
+}
+
+function cgnatSaveProfile($conn, $result, $o, $activate=true)
+{
+    $rows = cgnatMappingRows($result);
+    $name = trim(isset($o['name']) ? $o['name'] : '001');
+    if ($name === '') $name = '001';
+    $conn->begin_transaction();
+    try {
+        if ($activate) {
+            $conn->query("UPDATE cgnat_profile_periods SET ended_at=NOW() WHERE ended_at IS NULL");
+            $conn->query("UPDATE cgnat_profiles SET active=0 WHERE active=1");
+        }
+        $activeValue=$activate?1:0;
+        $stmt = $conn->prepare("INSERT INTO cgnat_profiles (name,private_cidr,public_cidr,clients_per_public,ports_per_client,first_port,last_port,source,active) VALUES (?,?,?,?,?,?,?,'generated',?)");
+        $stmt->bind_param('sssiiiii', $name, $result['private_cidr'], $result['public_cidr'], $result['clients_per_public'], $result['ports'], $result['first_port'], $result['last_port'], $activeValue);
         if (!$stmt->execute()) throw new RuntimeException($stmt->error);
         $profileId = $stmt->insert_id; $stmt->close();
-        if (!$conn->query("INSERT INTO cgnat_profile_periods (profile_id,started_at) VALUES (".(int)$profileId.",NOW())")) throw new RuntimeException($conn->error);
+        if ($activate && !$conn->query("INSERT INTO cgnat_profile_periods (profile_id,started_at) VALUES (".(int)$profileId.",NOW())")) throw new RuntimeException($conn->error);
         $map = $conn->prepare("INSERT INTO cgnat_mappings (profile_id,private_ip,public_ip,port_start,port_end) VALUES (?,?,?,?,?)");
         foreach ($rows as $row) {
             $map->bind_param('issii', $profileId, $row['private_ip'], $row['public_ip'], $row['port_start'], $row['port_end']);
@@ -206,7 +225,7 @@ function cgnatBuildPdf($result, $o)
         $pageObj=$next++; $streamObj=$next++; $kids[]=$pageObj.' 0 R';
         $content="0.10 0.14 0.20 rg 0 806 595 36 re f\n";
         $content.="BT /F2 18 Tf 0.20 0.70 0.95 rg 32 816 Td (MAPEAMENTO DAS PORTAS) Tj ET\n";
-        $subtitle=strtoupper(trim(isset($o['name'])?$o['name']:'CGNAT')).' | '.$result['private_cidr'].' > '.$result['public_cidr'].' | '.date('d/m/Y H:i');
+        $subtitle='CGNAT-'.strtoupper(trim(!empty($o['name'])?$o['name']:'001')).' | '.$result['private_cidr'].' > '.$result['public_cidr'].' | '.date('d/m/Y H:i');
         $content.="BT /F1 8 Tf 0.25 0.30 0.38 rg 32 790 Td (".cgnatPdfText($subtitle).") Tj ET\n";
         $content.="0.12 0.16 0.22 rg 28 760 539 22 re f\n";
         $content.="BT /F2 9 Tf 1 1 1 rg 36 768 Td (IP PUBLICO) Tj 190 0 Td (RANGE DE PORTAS) Tj 190 0 Td (IP PRIVADO) Tj ET\n";
