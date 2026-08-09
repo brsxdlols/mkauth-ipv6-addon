@@ -177,6 +177,7 @@ $historyStats = ipv6HistoryStats($conn, $retentionMonths);
 <meta charset="iso-8859-1">
 
 <link href="../../estilos/mk-auth.css" rel="stylesheet" />
+<link href="addon-theme.css?v=20260809" rel="stylesheet" />
 <link href="../../estilos/font-awesome.css" rel="stylesheet" />
 <link href="../../estilos/bi-icons.css" rel="stylesheet" />
 
@@ -304,6 +305,8 @@ jQuery(function($){
     margin-top:10px;
 }
 .content-wrapper{width:calc(100vw - 48px);max-width:1800px;margin-left:50%;transform:translateX(-50%)}.ipv6-nav{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0 18px}.ipv6-nav a{margin:0;padding:10px 14px;border-radius:7px;background:#1e293b;color:#e2e8f0;text-decoration:none;border:1px solid #26364d}.ipv6-nav a:nth-child(2){background:#223149}.ipv6-nav a:nth-child(3){background:#1b2b42}.ipv6-nav a:nth-child(4){background:#25344b}.ipv6-nav a.active{background:#2563eb;color:#fff;border-color:#3b82f6}.ipv6-coming{margin:12px 0;padding:16px;border:1px solid #334155;background:#111c31;border-radius:8px}.ipv6-filters{display:grid;grid-template-columns:90px minmax(250px,1fr) 150px minmax(190px,1fr) minmax(190px,1fr) auto;gap:9px;align-items:center;background:#111c31;border:1px solid #334155;padding:12px;border-radius:9px}.ipv6-filters input,.ipv6-filters select{width:100%;margin:0;box-sizing:border-box;border:1px solid #475569;background:#f8fafc;color:#0f172a}.ipv6-config{background:#111c31;border-color:#334155}.ipv6-muted{color:#94a3b8}.ipv6-config-btn{background:#1e293b;color:#e2e8f0!important}@media(max-width:900px){.content-wrapper{width:calc(100vw - 20px)}.ipv6-filters{grid-template-columns:1fr 1fr}.ipv6-filters button{width:100%}}
+.ipv6-panel{background:#f8fbff;color:#19324d;border:1px solid #bfdbef;box-shadow:0 8px 24px rgba(15,23,42,.08)}
+.ipv6-panel h2{color:#102a43}.ipv6-panel th{background:#19324d;color:#fff}.ipv6-panel td{border-bottom-color:#d8e6ef;color:#19324d}.ipv6-panel tr:hover{background:#eaf6fd}.ipv6-panel input,.ipv6-panel select{background:#fff;color:#102a43;border:1px solid #8bbbd5;border-radius:6px}.ipv6-panel a{color:#1677a6}.ipv6-nav a{background:#e1f1fb!important;color:#173b57!important;border:1px solid #b8dcef!important;font-weight:600}.ipv6-nav a.active{background:#38a9dc!important;color:#fff!important}.ipv6-filters{background:#fff!important;border-color:#bdd8ea!important}.ipv6-config{background:#f4faff!important;border-color:#b8d8e9!important;color:#244761}.ipv6-muted{color:#486b82!important}
 </style>
 
 </head>
