@@ -73,11 +73,11 @@ function cgnatGenerate($o)
         'size'=>$privateCount,
         'prefix'=>$privatePrefix
     );
-    $name = strtolower(preg_replace('/[^a-zA-Z0-9_-]+/', '-', !empty($o['name']) ? $o['name'] : 'cgnat'));
+    $name = strtoupper(preg_replace('/[^a-zA-Z0-9_-]+/', '-', !empty($o['name']) ? $o['name'] : 'PRINCIPAL'));
     $name = trim($name, '-_');
-    if ($name === '') $name = 'cgnat';
-    $chain = substr('cgnat-'.$name, 0, 28);
-    $comment = 'mkauth-ipv6-addon:'.$name;
+    if ($name === '') $name = 'PRINCIPAL';
+    $chain = substr('CGNAT-'.$name, 0, 28);
+    $comment = 'VPSCLOUD-'.$chain;
     $wan = trim(isset($o['interface']) ? $o['interface'] : '');
     $interfaceMode = (isset($o['interface_mode']) && $o['interface_mode'] === 'list') ? 'out-interface-list' : 'out-interface';
     $protocols = (isset($o['protocol']) && $o['protocol'] === 'tcp') ? array('tcp') : array('tcp', 'udp');
