@@ -169,11 +169,13 @@ function cgnatSaveProfile($conn, $result, $o)
     if ($name === '') $name = 'CGNAT';
     $conn->begin_transaction();
     try {
+        $conn->query("UPDATE cgnat_profile_periods SET ended_at=NOW() WHERE ended_at IS NULL");
         $conn->query("UPDATE cgnat_profiles SET active=0 WHERE active=1");
         $stmt = $conn->prepare("INSERT INTO cgnat_profiles (name,private_cidr,public_cidr,clients_per_public,ports_per_client,first_port,last_port,source,active) VALUES (?,?,?,?,?,?,?,'generated',1)");
         $stmt->bind_param('sssiiii', $name, $result['private_cidr'], $result['public_cidr'], $result['clients_per_public'], $result['ports'], $result['first_port'], $result['last_port']);
         if (!$stmt->execute()) throw new RuntimeException($stmt->error);
         $profileId = $stmt->insert_id; $stmt->close();
+        if (!$conn->query("INSERT INTO cgnat_profile_periods (profile_id,started_at) VALUES (".(int)$profileId.",NOW())")) throw new RuntimeException($conn->error);
         $map = $conn->prepare("INSERT INTO cgnat_mappings (profile_id,private_ip,public_ip,port_start,port_end) VALUES (?,?,?,?,?)");
         foreach ($rows as $row) {
             $map->bind_param('issii', $profileId, $row['private_ip'], $row['public_ip'], $row['port_start'], $row['port_end']);
