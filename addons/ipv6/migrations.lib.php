@@ -35,6 +35,11 @@ function ipv6RunMigrations($conn)
             throw new RuntimeException('Falha ao preparar arquivamento CGNAT: ' . $conn->error);
         }
     }
+    if (ipv6ColumnExists($conn, 'cgnat_profile_periods', 'id') && !ipv6ColumnExists($conn, 'cgnat_profile_periods', 'superseded_at')) {
+        if (!$conn->query("ALTER TABLE cgnat_profile_periods ADD COLUMN superseded_at datetime DEFAULT NULL, ADD KEY idx_cgnat_period_superseded (superseded_at)")) {
+            throw new RuntimeException('Falha ao preparar vigencia retroativa CGNAT: ' . $conn->error);
+        }
+    }
 
     $queries = array(
         "CREATE TABLE IF NOT EXISTS ipv6_history (
@@ -98,10 +103,12 @@ function ipv6RunMigrations($conn)
             profile_id int(11) NOT NULL,
             started_at datetime NOT NULL,
             ended_at datetime DEFAULT NULL,
+            superseded_at datetime DEFAULT NULL,
             created_at timestamp NOT NULL DEFAULT current_timestamp(),
             PRIMARY KEY (id),
             KEY idx_cgnat_period_profile (profile_id),
-            KEY idx_cgnat_period_dates (started_at, ended_at)
+            KEY idx_cgnat_period_dates (started_at, ended_at),
+            KEY idx_cgnat_period_superseded (superseded_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=latin1",
         "CREATE TABLE IF NOT EXISTS cgnat_connection_archive (
             id bigint(20) NOT NULL AUTO_INCREMENT,
