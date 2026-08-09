@@ -1,30 +1,30 @@
 <?php
 require_once __DIR__.'/bootstrap.lib.php';
 require_once __DIR__.'/migrations.lib.php';
+require_once __DIR__.'/cgnat.lib.php';
 ipv6RequireMkAuthLogin();
 $conn=new mysqli('127.0.0.1','root','vertrigo','mkradius');
 ipv6RunMigrations($conn);
+$downloadId=(int)($_GET['download_csv']??0);
+if($downloadId>0){
+ header('Content-Type: text/csv; charset=utf-8');header('Content-Disposition: attachment; filename="cgnat-'.$downloadId.'-conexoes.csv"');
+ $out=fopen('php://output','w');fputs($out,"\xEF\xBB\xBF");fputcsv($out,array('Login','Inicio da conexao','Fim da conexao','Inicio da vigencia','Fim da vigencia','IP privado','IP publico','Porta inicial','Porta final'),';');
+ $stmt=$conn->prepare("SELECT username,connection_start,connection_end,effective_start,effective_end,private_ip,public_ip,port_start,port_end FROM cgnat_connection_archive WHERE profile_id=? ORDER BY effective_start");$stmt->bind_param('i',$downloadId);$stmt->execute();$res=$stmt->get_result();while($r=$res->fetch_assoc())fputcsv($out,$r,';');$stmt->close();
+ $stmt=$conn->prepare("SELECT r.username,r.acctstarttime,r.acctstoptime,IF(r.acctstarttime>v.started_at,r.acctstarttime,v.started_at),NOW(),r.framedipaddress,m.public_ip,m.port_start,m.port_end FROM cgnat_profile_periods v INNER JOIN radacct r ON r.acctstarttime<NOW() AND (r.acctstoptime IS NULL OR r.acctstoptime>v.started_at) LEFT JOIN cgnat_mappings m ON m.profile_id=v.profile_id AND m.private_ip=r.framedipaddress WHERE v.profile_id=? AND v.ended_at IS NULL ORDER BY r.acctstarttime");$stmt->bind_param('i',$downloadId);$stmt->execute();$res=$stmt->get_result();while($r=$res->fetch_row())fputcsv($out,$r,';');$stmt->close();fclose($out);exit;
+}
 $message='';$error='';
 if($_SERVER['REQUEST_METHOD']==='POST'){
  try{
   $id=(int)($_POST['profile_id']??0);
   if($id<1)throw new RuntimeException('Perfil CGNAT invalido.');
   if(isset($_POST['activate'])){
-   $conn->begin_transaction();
-   $conn->query('UPDATE cgnat_profile_periods SET ended_at=NOW() WHERE ended_at IS NULL');
-   $conn->query('UPDATE cgnat_profiles SET active=0');
-   if(!$conn->query('UPDATE cgnat_profiles SET active=1 WHERE id='.$id) || $conn->affected_rows!==1)throw new RuntimeException('Perfil nao encontrado.');
-   if(!$conn->query('INSERT INTO cgnat_profile_periods (profile_id,started_at) VALUES ('.$id.',NOW())'))throw new RuntimeException($conn->error);
-   $conn->commit();$message='CGNAT #'.$id.' definido como padrao atual dos clientes.';
+   cgnatActivateProfile($conn,$id);$message='CGNAT #'.$id.' definido como padrao atual. Clientes online passam a usar este mapeamento imediatamente; o periodo anterior foi arquivado.';
   }elseif(isset($_POST['delete'])){
    $check=$conn->query('SELECT active FROM cgnat_profiles WHERE id='.$id)->fetch_assoc();
    if(!$check)throw new RuntimeException('Perfil nao encontrado.');
    if((int)$check['active']===1)throw new RuntimeException('Marque outro CGNAT como padrao antes de excluir o perfil atual.');
-   $conn->begin_transaction();
-   $conn->query('DELETE FROM cgnat_profile_periods WHERE profile_id='.$id);
-   $conn->query('DELETE FROM cgnat_mappings WHERE profile_id='.$id);
-   $conn->query('DELETE FROM cgnat_profiles WHERE id='.$id);
-   $conn->commit();$message='CGNAT #'.$id.' e seus mapeamentos foram excluidos.';
+   if(!$conn->query('UPDATE cgnat_profiles SET deleted_at=NOW() WHERE id='.$id))throw new RuntimeException($conn->error);
+   $message='CGNAT #'.$id.' arquivado. Mapeamentos e relatorios permanecerao guardados por dois anos.';
   }
  }catch(Exception $e){$conn->rollback();$error=$e->getMessage();}
 }
@@ -39,5 +39,6 @@ function h($v){return htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');}
 <?php if($error):?><div class="alert"><?=h($error)?></div><?php endif;?><?php if($message):?><div class="ok"><?=h($message)?></div><?php endif;?>
 <section class="card"><p>O perfil marcado como <strong>Padrao atual</strong> e usado nas novas conexoes. Os periodos de vigencia ficam registrados para que conexoes antigas continuem sendo cruzadas com o CGNAT correto.</p><div class="table-wrap"><table><thead><tr><th>Gerado em</th><th>CGNAT</th><th>Rede privada</th><th>Rede publica</th><th>Portas</th><th>Clientes/IP</th><th>Total clientes</th><th>Vigencia</th><th>Status</th><th>Acoes</th></tr></thead><tbody>
 <?php if(!$profiles):?><tr><td colspan="10" class="empty">Nenhum mapeamento CGNAT foi salvo ainda.</td></tr><?php endif;?>
-<?php foreach($profiles as $p):?><tr><td><?=h(date('d/m/Y H:i',strtotime($p['created_at'])))?></td><td><strong><?=h(strtoupper($p['name']))?></strong><br>#<?=$p['id']?> · <?=h($p['source']==='generated'?'Gerado':'Importado')?></td><td><?=h($p['private_cidr'])?><br><small><?=number_format((int)$p['mapping_count'],0,',','.')?> IPs mapeados</small></td><td><?=h($p['public_cidr'])?></td><td><?=number_format((int)$p['ports_per_client'],0,',','.')?><br><small><?=$p['first_port']?>-<?=$p['last_port']?></small></td><td><?=$p['clients_per_public']?></td><td><?=number_format((int)$p['mapping_count'],0,',','.')?></td><td><?php if($p['first_started']):?>Desde <?=h(date('d/m/Y H:i',strtotime($p['first_started'])))?><?php endif;?><?php if($p['active']&&$p['current_started']):?><br><strong>Atual desde <?=h(date('d/m/Y H:i',strtotime($p['current_started'])))?></strong><?php elseif($p['last_ended']):?><br>Ate <?=h(date('d/m/Y H:i',strtotime($p['last_ended'])))?><?php endif;?></td><td><span class="badge <?=$p['active']?'active':''?>"><?=$p['active']?'Padrao atual':'Historico'?></span></td><td><div class="actions"><form method="post" onsubmit="return confirm('ATENCAO: alterar o CGNAT padrao muda o cruzamento das NOVAS conexoes. As conexoes antigas permanecerao ligadas ao periodo anterior. Confirma a alteracao?')"><input type="hidden" name="profile_id" value="<?=$p['id']?>"><button class="btn" name="activate" value="1" <?=$p['active']?'disabled':''?>>Marcar como padrao</button></form><form method="post" onsubmit="return confirm('Excluir este CGNAT, seus periodos e todos os mapeamentos? Conexoes historicas desse periodo deixarao de ter cruzamento CGNAT. Confirma?')"><input type="hidden" name="profile_id" value="<?=$p['id']?>"><button class="btn danger" name="delete" value="1" <?=$p['active']?'disabled title="Defina outro perfil como padrao antes de excluir"':''?>>Excluir</button></form></div></td></tr><?php endforeach;?>
+<?php foreach($profiles as $p):?><tr><td><?=h(date('d/m/Y H:i',strtotime($p['created_at'])))?></td><td><strong><?=h(strtoupper($p['name']))?></strong><br>#<?=$p['id']?> - <?=h($p['source']==='generated'?'Gerado':'Importado')?></td><td><?=h($p['private_cidr'])?><br><small><?=number_format((int)$p['mapping_count'],0,',','.')?> IPs mapeados</small></td><td><?=h($p['public_cidr'])?></td><td><?=number_format((int)$p['ports_per_client'],0,',','.')?><br><small><?=$p['first_port']?>-<?=$p['last_port']?></small></td><td><?=$p['clients_per_public']?></td><td><?=number_format((int)$p['mapping_count'],0,',','.')?></td><td><?php if($p['first_started']):?>Desde <?=h(date('d/m/Y H:i',strtotime($p['first_started'])))?><?php endif;?><?php if($p['active']&&$p['current_started']):?><br><strong>Atual desde <?=h(date('d/m/Y H:i',strtotime($p['current_started'])))?></strong><?php elseif($p['last_ended']):?><br>Ate <?=h(date('d/m/Y H:i',strtotime($p['last_ended'])))?><?php endif;?></td><td><span class="badge <?=$p['active']?'active':''?>"><?=$p['active']?'Padrao atual':($p['deleted_at']?'Arquivado por 2 anos':'Historico')?></span></td><td><div class="actions"><a class="btn" href="?download_csv=<?=$p['id']?>">Baixar relatorio CSV</a><?php if(!$p['deleted_at']):?><form method="post" onsubmit="return confirm('ATENCAO: o novo CGNAT sera aplicado imediatamente aos clientes online e as novas conexoes. O periodo atual sera congelado no relatorio historico. Confirma?')"><input type="hidden" name="profile_id" value="<?=$p['id']?>"><button class="btn" name="activate" value="1" <?=$p['active']?'disabled':''?>>Marcar como padrao</button></form><form method="post" onsubmit="return confirm('Este CGNAT sera arquivado, nao apagado. Mapeamentos e conexoes permanecerao disponiveis para relatorio por dois anos. Confirma?')"><input type="hidden" name="profile_id" value="<?=$p['id']?>"><button class="btn danger" name="delete" value="1" <?=$p['active']?'disabled title="Defina outro perfil como padrao antes de arquivar"':''?>>Arquivar</button></form><?php endif;?></div></td></tr><?php endforeach;?>
 </tbody></table></div></section></main></div><?php include('../../baixo.php'); ?><script src="../../menu.js.php"></script><?php include('../../rodape.php'); ?></body></html>
+
