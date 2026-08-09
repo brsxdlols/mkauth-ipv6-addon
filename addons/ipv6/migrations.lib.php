@@ -84,6 +84,16 @@ function ipv6RunMigrations($conn)
             KEY idx_cgnat_private (private_ip),
             KEY idx_cgnat_public_ports (public_ip, port_start, port_end),
             KEY idx_cgnat_profile (profile_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=latin1",
+        "CREATE TABLE IF NOT EXISTS cgnat_profile_periods (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            profile_id int(11) NOT NULL,
+            started_at datetime NOT NULL,
+            ended_at datetime DEFAULT NULL,
+            created_at timestamp NOT NULL DEFAULT current_timestamp(),
+            PRIMARY KEY (id),
+            KEY idx_cgnat_period_profile (profile_id),
+            KEY idx_cgnat_period_dates (started_at, ended_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=latin1"
     );
 
@@ -92,6 +102,10 @@ function ipv6RunMigrations($conn)
             throw new RuntimeException('Falha na instalacao automatica do banco: ' . $conn->error);
         }
     }
+
+    $conn->query("INSERT INTO cgnat_profile_periods (profile_id,started_at,ended_at)
+        SELECT p.id,p.created_at,NULL FROM cgnat_profiles p
+        WHERE p.active=1 AND NOT EXISTS (SELECT 1 FROM cgnat_profile_periods x WHERE x.profile_id=p.id)");
 
     $conn->query("INSERT IGNORE INTO ipv6_schema_migrations (version) VALUES (1)");
     $token = bin2hex(random_bytes(24));
