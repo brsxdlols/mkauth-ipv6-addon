@@ -17,14 +17,14 @@ ipv6RunMigrations($conn);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['activate_cgnat'])) {
     $profileId = (int)($_POST['cgnat_profile_id'] ?? 0);
-    $conn->begin_transaction();
-    cgnatArchiveOpenPeriods($conn);
-    $conn->query("UPDATE cgnat_profiles SET active=0");
     if ($profileId > 0) {
-        $conn->query("UPDATE cgnat_profiles SET active=1 WHERE id=".$profileId);
-        $conn->query("INSERT INTO cgnat_profile_periods (profile_id,started_at) VALUES (".$profileId.",NOW())");
+        cgnatActivateProfile($conn, $profileId);
+    } else {
+        $conn->begin_transaction();
+        cgnatArchiveOpenPeriods($conn);
+        $conn->query("UPDATE cgnat_profiles SET active=0");
+        $conn->commit();
     }
-    $conn->commit();
 }
 $cgnatProfiles = array();
 $profileResult = $conn->query("SELECT * FROM cgnat_profiles WHERE deleted_at IS NULL ORDER BY created_at DESC, id DESC");
@@ -116,7 +116,7 @@ function buildSQL($busca,$inicio,$fim,$modoResumo,$status=''){
         AND h1.id = h2.max_id
     ) h ON h.session_id = r.acctsessionid
     LEFT JOIN cgnat_mappings cm ON cm.private_ip=r.framedipaddress
-      AND cm.profile_id=(CASE WHEN r.acctstoptime IS NULL THEN (SELECT id FROM cgnat_profiles WHERE active=1 AND deleted_at IS NULL ORDER BY id DESC LIMIT 1) ELSE (SELECT v.profile_id FROM cgnat_profile_periods v WHERE v.started_at<=r.acctstarttime AND (v.ended_at IS NULL OR v.ended_at>r.acctstarttime) ORDER BY v.started_at DESC LIMIT 1) END)
+      AND cm.profile_id=(CASE WHEN r.acctstoptime IS NULL THEN (SELECT id FROM cgnat_profiles WHERE active=1 AND deleted_at IS NULL ORDER BY id DESC LIMIT 1) ELSE (SELECT v.profile_id FROM cgnat_profile_periods v WHERE v.superseded_at IS NULL AND v.started_at<r.acctstoptime AND (v.ended_at IS NULL OR v.ended_at>r.acctstarttime) ORDER BY v.started_at DESC LIMIT 1) END)
     ";
 
     if($modoResumo){
