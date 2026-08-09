@@ -17,8 +17,12 @@ ipv6RunMigrations($conn);
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['activate_cgnat'])) {
     $profileId = (int)($_POST['cgnat_profile_id'] ?? 0);
     $conn->begin_transaction();
+    $conn->query("UPDATE cgnat_profile_periods SET ended_at=NOW() WHERE ended_at IS NULL");
     $conn->query("UPDATE cgnat_profiles SET active=0");
-    if ($profileId > 0) $conn->query("UPDATE cgnat_profiles SET active=1 WHERE id=".$profileId);
+    if ($profileId > 0) {
+        $conn->query("UPDATE cgnat_profiles SET active=1 WHERE id=".$profileId);
+        $conn->query("INSERT INTO cgnat_profile_periods (profile_id,started_at) VALUES (".$profileId.",NOW())");
+    }
     $conn->commit();
 }
 $cgnatProfiles = array();
@@ -111,7 +115,7 @@ function buildSQL($busca,$inicio,$fim,$modoResumo,$status=''){
         AND h1.id = h2.max_id
     ) h ON h.session_id = r.acctsessionid
     LEFT JOIN cgnat_mappings cm ON cm.private_ip=r.framedipaddress
-      AND cm.profile_id=(SELECT id FROM cgnat_profiles WHERE active=1 ORDER BY id DESC LIMIT 1)
+      AND cm.profile_id=(SELECT v.profile_id FROM cgnat_profile_periods v WHERE v.started_at<=COALESCE(r.acctstarttime,NOW()) AND (v.ended_at IS NULL OR v.ended_at>COALESCE(r.acctstarttime,NOW())) ORDER BY v.started_at DESC LIMIT 1)
     ";
 
     if($modoResumo){
@@ -339,9 +343,10 @@ jQuery(function($){
     <a class="active" href="ipv6.php">Painel e logs</a>
     <a href="mikrotik.php">Scripts MikroTik</a>
     <a href="cgnat.php">CGNAT</a>
+    <a href="cgnat_history.php">Historico de CGNAT</a>
     <a href="import.php">Importar mapeamento</a>
 </div>
-<?php if($cgnatProfiles):?><div class="ipv6-config" style="display:block;margin:14px 0"><form method="post"><strong>Mapeamento CGNAT usado no cruzamento:</strong> <select name="cgnat_profile_id"><option value="0">Nao usar mapeamento</option><?php foreach($cgnatProfiles as $profile):?><option value="<?=$profile['id']?>" <?=$profile['active']?'selected':''?>>Usar CGNAT gerado em <?=date('d/m/Y H:i',strtotime($profile['created_at']))?> - privado <?=$profile['private_cidr']?> - publico <?=$profile['public_cidr']?> - <?=$profile['ports_per_client']?> portas</option><?php endforeach;?></select> <button name="activate_cgnat" value="1">Aplicar</button></form></div><?php endif;?>
+<?php if($cgnatProfiles && $showConfig):?><div class="ipv6-config" style="display:block;margin:14px 0"><form method="post" onsubmit="return confirm('ATENCAO: alterar o CGNAT padrao muda o cruzamento das novas conexoes. O periodo anterior sera encerrado e preservado para o historico. Confirma?')"><strong>CGNAT padrao usado no cruzamento:</strong> <select name="cgnat_profile_id"><option value="0">Nao usar mapeamento</option><?php foreach($cgnatProfiles as $profile):?><option value="<?=$profile['id']?>" <?=$profile['active']?'selected':''?>><?=strtoupper(htmlspecialchars($profile['name'],ENT_QUOTES,'UTF-8'))?> | desde <?=date('d/m/Y H:i',strtotime($profile['created_at']))?> | privado <?=$profile['private_cidr']?> | publico <?=$profile['public_cidr']?> | <?=$profile['ports_per_client']?> portas</option><?php endforeach;?></select> <button name="activate_cgnat" value="1">Aplicar CGNAT padrao</button><br><small>A troca fica registrada por data e hora. Conexoes antigas continuam vinculadas ao CGNAT vigente no periodo delas.</small></form></div><?php endif;?>
 <?php if (($_GET['module'] ?? '') === 'cgnat'): ?><div class="ipv6-coming"><strong>Modulo CGNAT</strong><br>O gerador opcional e a correlacao por IP publico + porta + horario serao adicionados aqui. O historico IPv4/IPv6 continuara independente.</div><?php endif; ?>
 
 <?php if ($configMessage): ?>
