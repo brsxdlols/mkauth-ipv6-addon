@@ -30,6 +30,12 @@ function ipv6RunMigrations($conn)
         }
     }
 
+    if (ipv6ColumnExists($conn, 'cgnat_profiles', 'id') && !ipv6ColumnExists($conn, 'cgnat_profiles', 'deleted_at')) {
+        if (!$conn->query("ALTER TABLE cgnat_profiles ADD COLUMN deleted_at datetime DEFAULT NULL, ADD KEY idx_cgnat_deleted (deleted_at)")) {
+            throw new RuntimeException('Falha ao preparar arquivamento CGNAT: ' . $conn->error);
+        }
+    }
+
     $queries = array(
         "CREATE TABLE IF NOT EXISTS ipv6_history (
             id int(11) NOT NULL AUTO_INCREMENT,
@@ -68,9 +74,11 @@ function ipv6RunMigrations($conn)
             last_port int(11) NOT NULL,
             source varchar(20) NOT NULL DEFAULT 'generated',
             active tinyint(1) NOT NULL DEFAULT 0,
+            deleted_at datetime DEFAULT NULL,
             created_at timestamp NOT NULL DEFAULT current_timestamp(),
             PRIMARY KEY (id),
-            KEY idx_cgnat_profile_active (active, created_at)
+            KEY idx_cgnat_profile_active (active, created_at),
+            KEY idx_cgnat_deleted (deleted_at)
         ) ENGINE=InnoDB DEFAULT CHARSET=latin1",
         "CREATE TABLE IF NOT EXISTS cgnat_mappings (
             id bigint(20) NOT NULL AUTO_INCREMENT,
@@ -94,6 +102,26 @@ function ipv6RunMigrations($conn)
             PRIMARY KEY (id),
             KEY idx_cgnat_period_profile (profile_id),
             KEY idx_cgnat_period_dates (started_at, ended_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=latin1",
+        "CREATE TABLE IF NOT EXISTS cgnat_connection_archive (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            profile_id int(11) NOT NULL,
+            period_id bigint(20) NOT NULL,
+            radacctid bigint(20) NOT NULL,
+            username varchar(100) DEFAULT NULL,
+            private_ip varchar(50) DEFAULT NULL,
+            public_ip varchar(50) DEFAULT NULL,
+            port_start int(11) DEFAULT NULL,
+            port_end int(11) DEFAULT NULL,
+            connection_start datetime DEFAULT NULL,
+            connection_end datetime DEFAULT NULL,
+            effective_start datetime NOT NULL,
+            effective_end datetime NOT NULL,
+            archived_at timestamp NOT NULL DEFAULT current_timestamp(),
+            PRIMARY KEY (id),
+            UNIQUE KEY uq_cgnat_archive_session (profile_id,period_id,radacctid),
+            KEY idx_cgnat_archive_profile_date (profile_id,effective_start),
+            KEY idx_cgnat_archive_user_date (username,effective_start)
         ) ENGINE=InnoDB DEFAULT CHARSET=latin1"
     );
 
@@ -107,6 +135,13 @@ function ipv6RunMigrations($conn)
         SELECT p.id,p.created_at,NULL FROM cgnat_profiles p
         WHERE p.active=1 AND NOT EXISTS (SELECT 1 FROM cgnat_profile_periods x WHERE x.profile_id=p.id)");
 
+    if (ipv6ColumnExists($conn, 'cgnat_profiles', 'deleted_at')) {
+        $conn->query("DELETE m FROM cgnat_mappings m INNER JOIN cgnat_profiles p ON p.id=m.profile_id WHERE p.deleted_at<DATE_SUB(NOW(),INTERVAL 2 YEAR)");
+        $conn->query("DELETE v FROM cgnat_profile_periods v INNER JOIN cgnat_profiles p ON p.id=v.profile_id WHERE p.deleted_at<DATE_SUB(NOW(),INTERVAL 2 YEAR)");
+        $conn->query("DELETE a FROM cgnat_connection_archive a INNER JOIN cgnat_profiles p ON p.id=a.profile_id WHERE p.deleted_at<DATE_SUB(NOW(),INTERVAL 2 YEAR)");
+        $conn->query("DELETE FROM cgnat_profiles WHERE deleted_at<DATE_SUB(NOW(),INTERVAL 2 YEAR)");
+    }
+
     $conn->query("INSERT IGNORE INTO ipv6_schema_migrations (version) VALUES (1)");
     $token = bin2hex(random_bytes(24));
     $stmt = $conn->prepare("INSERT IGNORE INTO ipv6_settings (name, value) VALUES ('api_token', ?)");
@@ -116,3 +151,4 @@ function ipv6RunMigrations($conn)
 
     $conn->query("INSERT IGNORE INTO ipv6_settings (name, value) VALUES ('allow_legacy_disconnect', '1')");
 }
+
