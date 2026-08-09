@@ -170,21 +170,40 @@ function cgnatArchiveOpenPeriods($conn)
         FROM cgnat_profile_periods v
         INNER JOIN radacct r ON r.acctstarttime<NOW() AND (r.acctstoptime IS NULL OR r.acctstoptime>v.started_at)
         LEFT JOIN cgnat_mappings m ON m.profile_id=v.profile_id AND m.private_ip=r.framedipaddress
-        WHERE v.ended_at IS NULL";
+        WHERE v.ended_at IS NULL AND v.superseded_at IS NULL";
     if (!$conn->query($sql)) throw new RuntimeException('Falha ao arquivar conexoes do periodo CGNAT: '.$conn->error);
     if (!$conn->query("UPDATE cgnat_profile_periods SET ended_at=NOW() WHERE ended_at IS NULL")) throw new RuntimeException($conn->error);
 }
 
-function cgnatActivateProfile($conn, $profileId)
+function cgnatNormalizeEffectiveDate($value)
+{
+    if ($value === null || trim($value) === '') return date('Y-m-d H:i:s');
+    $raw = trim($value);
+    $date = DateTime::createFromFormat('Y-m-d\TH:i', $raw);
+    if (!$date) $date = DateTime::createFromFormat('Y-m-d H:i:s', $raw);
+    if (!$date) throw new InvalidArgumentException('Informe uma data retroativa valida.');
+    $now = new DateTime();
+    $oldest = (clone $now)->modify('-2 years');
+    if ($date > $now) throw new InvalidArgumentException('A vigencia nao pode comecar no futuro.');
+    if ($date < $oldest) throw new InvalidArgumentException('A vigencia retroativa esta limitada aos ultimos dois anos.');
+    return $date->format('Y-m-d H:i:s');
+}
+
+function cgnatActivateProfile($conn, $profileId, $effectiveDate=null)
 {
     $profileId = (int)$profileId;
     if ($profileId < 1) throw new InvalidArgumentException('Perfil CGNAT invalido.');
     $conn->begin_transaction();
     try {
+        $startedAt = cgnatNormalizeEffectiveDate($effectiveDate);
+        $escapedStart = $conn->real_escape_string($startedAt);
         cgnatArchiveOpenPeriods($conn);
+        if ($effectiveDate !== null && trim($effectiveDate) !== '') {
+            if (!$conn->query("UPDATE cgnat_profile_periods SET superseded_at=NOW() WHERE superseded_at IS NULL AND (started_at>='".$escapedStart."' OR ended_at>'".$escapedStart."')")) throw new RuntimeException($conn->error);
+        }
         $conn->query("UPDATE cgnat_profiles SET active=0 WHERE active=1");
-        if (!$conn->query("UPDATE cgnat_profiles SET active=1 WHERE id=".$profileId) || $conn->affected_rows !== 1) throw new RuntimeException('Perfil CGNAT nao encontrado.');
-        if (!$conn->query("INSERT INTO cgnat_profile_periods (profile_id,started_at) VALUES (".$profileId.",NOW())")) throw new RuntimeException($conn->error);
+        if (!$conn->query("UPDATE cgnat_profiles SET active=1 WHERE id=".$profileId." AND deleted_at IS NULL") || $conn->affected_rows !== 1) throw new RuntimeException('Perfil CGNAT nao encontrado.');
+        if (!$conn->query("INSERT INTO cgnat_profile_periods (profile_id,started_at) VALUES (".$profileId.",'".$escapedStart."')")) throw new RuntimeException($conn->error);
         $conn->commit();
     } catch (Exception $e) {
         $conn->rollback(); throw $e;
