@@ -162,13 +162,26 @@ function cgnatMappingRows($result)
     return $rows;
 }
 
+function cgnatArchiveOpenPeriods($conn)
+{
+    $sql="INSERT IGNORE INTO cgnat_connection_archive (profile_id,period_id,radacctid,username,private_ip,public_ip,port_start,port_end,connection_start,connection_end,effective_start,effective_end)
+        SELECT v.profile_id,v.id,r.radacctid,r.username,r.framedipaddress,m.public_ip,m.port_start,m.port_end,r.acctstarttime,r.acctstoptime,
+        IF(r.acctstarttime>v.started_at,r.acctstarttime,v.started_at),NOW()
+        FROM cgnat_profile_periods v
+        INNER JOIN radacct r ON r.acctstarttime<NOW() AND (r.acctstoptime IS NULL OR r.acctstoptime>v.started_at)
+        LEFT JOIN cgnat_mappings m ON m.profile_id=v.profile_id AND m.private_ip=r.framedipaddress
+        WHERE v.ended_at IS NULL";
+    if (!$conn->query($sql)) throw new RuntimeException('Falha ao arquivar conexoes do periodo CGNAT: '.$conn->error);
+    if (!$conn->query("UPDATE cgnat_profile_periods SET ended_at=NOW() WHERE ended_at IS NULL")) throw new RuntimeException($conn->error);
+}
+
 function cgnatActivateProfile($conn, $profileId)
 {
     $profileId = (int)$profileId;
     if ($profileId < 1) throw new InvalidArgumentException('Perfil CGNAT invalido.');
     $conn->begin_transaction();
     try {
-        $conn->query("UPDATE cgnat_profile_periods SET ended_at=NOW() WHERE ended_at IS NULL");
+        cgnatArchiveOpenPeriods($conn);
         $conn->query("UPDATE cgnat_profiles SET active=0 WHERE active=1");
         if (!$conn->query("UPDATE cgnat_profiles SET active=1 WHERE id=".$profileId) || $conn->affected_rows !== 1) throw new RuntimeException('Perfil CGNAT nao encontrado.');
         if (!$conn->query("INSERT INTO cgnat_profile_periods (profile_id,started_at) VALUES (".$profileId.",NOW())")) throw new RuntimeException($conn->error);
@@ -186,7 +199,7 @@ function cgnatSaveProfile($conn, $result, $o, $activate=true)
     $conn->begin_transaction();
     try {
         if ($activate) {
-            $conn->query("UPDATE cgnat_profile_periods SET ended_at=NOW() WHERE ended_at IS NULL");
+            cgnatArchiveOpenPeriods($conn);
             $conn->query("UPDATE cgnat_profiles SET active=0 WHERE active=1");
         }
         $activeValue=$activate?1:0;
@@ -248,3 +261,4 @@ function cgnatBuildPdf($result, $o)
     $pdf.="trailer\n<< /Size ".($max+1)." /Root 1 0 R >>\nstartxref\n".$xref."\n%%EOF";
     return $pdf;
 }
+
