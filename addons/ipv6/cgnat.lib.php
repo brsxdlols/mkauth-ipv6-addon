@@ -40,7 +40,9 @@ function cgnatGenerate($o)
     $public = cgnatNetwork(isset($o['public']) ? $o['public'] : '');
     if (!$public || $public['input'] !== $public['start']) throw new InvalidArgumentException('Informe um bloco publico CIDR valido e alinhado, por exemplo 45.228.151.112/29.');
 
-    $ratio = isset($o['ratio']) ? (int) $o['ratio'] : 32;
+    $portChoices = array(16128=>4, 8064=>8, 4032=>16, 2016=>32, 1008=>64, 504=>128, 252=>256);
+    $requestedPorts = isset($o['ports_choice']) ? (int)$o['ports_choice'] : 0;
+    $ratio = isset($portChoices[$requestedPorts]) ? $portChoices[$requestedPorts] : (isset($o['ratio']) ? (int) $o['ratio'] : 32);
     $allowed = array(4, 8, 16, 32, 64, 128, 256);
     if (!in_array($ratio, $allowed, true) || !cgnatIsPowerOfTwo($ratio)) throw new InvalidArgumentException('Escolha uma relacao valida de clientes por IP publico.');
 
@@ -77,9 +79,10 @@ function cgnatGenerate($o)
     $chain = substr('cgnat-'.$name, 0, 28);
     $comment = 'mkauth-ipv6-addon:'.$name;
     $wan = trim(isset($o['interface']) ? $o['interface'] : '');
+    $interfaceMode = (isset($o['interface_mode']) && $o['interface_mode'] === 'list') ? 'out-interface-list' : 'out-interface';
     $protocols = (isset($o['protocol']) && $o['protocol'] === 'tcp') ? array('tcp') : array('tcp', 'udp');
     $action = (isset($o['type']) && $o['type'] === 'src-nat') ? 'src-nat' : 'netmap';
-    $ignore = trim(isset($o['ignore']) ? $o['ignore'] : '');
+    $ignore = trim(isset($o['exception_list']) ? $o['exception_list'] : (isset($o['ignore']) ? $o['ignore'] : ''));
     $ignoreMatch = '';
     if ($ignore !== '') $ignoreMatch = strpos($ignore, '/') !== false ? ' dst-address=!'.$ignore : ' dst-address-list=!"'.$ignore.'"';
 
@@ -94,12 +97,21 @@ function cgnatGenerate($o)
         '######################################', '',
         '/ip firewall nat remove [find comment="'.$comment.'"];'
     );
+    if (!empty($o['fasttrack'])) $lines[] = '/ip firewall filter remove [find comment="'.$comment.'-fasttrack"];';
     if (!empty($o['blackhole'])) $lines[] = '/ip route remove [find comment="'.$comment.'"];';
     $lines[] = '';
     if (!empty($o['blackhole'])) {
         if (isset($o['routeros']) && $o['routeros'] === '7') $lines[] = '/ip route add blackhole dst-address='.$public['cidr'].' distance=254 comment="'.$comment.'";';
         else $lines[] = '/ip route add dst-address='.$public['cidr'].' type=blackhole distance=254 comment="'.$comment.'";';
         $lines[] = '';
+    }
+    if (!empty($o['fasttrack'])) {
+        $lines[] = '/ip firewall filter;';
+        $fast='add action=fasttrack-connection chain=forward connection-state=established,related';
+        if (isset($o['routeros']) && $o['routeros'] === '7') $fast.=' hw-offload=yes';
+        $lines[]=$fast.' comment="'.$comment.'-fasttrack";';
+        $lines[]='add action=accept chain=forward connection-state=established,related comment="'.$comment.'-fasttrack";';
+        $lines[]='';
     }
     $lines[] = '/ip firewall nat;';
     $lines[] = 'add action=jump chain=srcnat src-address='.$private['cidr'].$ignoreMatch.' jump-target="'.$chain.'" comment="'.$comment.'";';
@@ -114,13 +126,13 @@ function cgnatGenerate($o)
         $ranges[] = array($portStart, $portEnd);
         foreach ($protocols as $proto) {
             $line = 'add action='.$action.' chain="'.$chain.'"';
-            if ($wan !== '') $line .= ' out-interface="'.$wan.'"';
+            if ($wan !== '') $line .= ' '.$interfaceMode.'="'.$wan.'"';
             $line .= ' protocol='.$proto.' src-address='.$groupCidr.' to-addresses='.$public['cidr'].' to-ports='.$portStart.'-'.$portEnd.' comment="'.$comment.'";';
             $lines[] = $line;
         }
         if (!empty($o['nat_others'])) {
             $line = 'add action='.$action.' chain="'.$chain.'"';
-            if ($wan !== '') $line .= ' out-interface="'.$wan.'"';
+            if ($wan !== '') $line .= ' '.$interfaceMode.'="'.$wan.'"';
             $line .= ' src-address='.$groupCidr.' to-addresses='.$public['cidr'].' comment="'.$comment.'";';
             $lines[] = $line;
         }
