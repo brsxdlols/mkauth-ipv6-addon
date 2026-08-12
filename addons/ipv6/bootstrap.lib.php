@@ -1,5 +1,11 @@
 <?php
 
+/* PHP 8.1 habilita MYSQLI_REPORT_STRICT por padrao. O addon trata erros
+   explicitamente e precisa do mesmo comportamento no PHP 7 e PHP 8. */
+if (function_exists('mysqli_report')) {
+    mysqli_report(MYSQLI_REPORT_OFF);
+}
+
 // Carrega o runtime visual/oficial do MK-Auth quando presente. Algumas
 // instalacoes fornecem MKAC_BOT, Manifest e dados do topo somente aqui.
 $ipv6AddonClass = is_file(__DIR__.'/addons.class.php')
@@ -62,6 +68,9 @@ function ipv6RequireMkAuthLogin()
         http_response_code(403);
         exit('Acesso negado... <a href="/admin/">Voltar ao MK-Auth</a>');
     }
+    if (!headers_sent()) {
+        header('Content-Type: text/html; charset=utf-8');
+    }
 }
 
 function ipv6LoadAddonManifest()
@@ -75,3 +84,4 @@ function ipv6LoadAddonManifest()
     }
     return (object) array('name' => 'Painel IPv4 e IPv6', 'version' => '1.0');
 }
+
