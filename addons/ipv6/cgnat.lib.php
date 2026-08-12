@@ -175,6 +175,40 @@ function cgnatArchiveOpenPeriods($conn)
     if (!$conn->query("UPDATE cgnat_profile_periods SET ended_at=NOW() WHERE ended_at IS NULL")) throw new RuntimeException($conn->error);
 }
 
+function cgnatArchiveProfilePeriods($conn, $profileId)
+{
+    $profileId=(int)$profileId;
+    $sql="INSERT IGNORE INTO cgnat_connection_archive (profile_id,period_id,radacctid,username,private_ip,public_ip,port_start,port_end,connection_start,connection_end,effective_start,effective_end)
+        SELECT v.profile_id,v.id,r.radacctid,r.username,r.framedipaddress,m.public_ip,m.port_start,m.port_end,r.acctstarttime,r.acctstoptime,
+        IF(r.acctstarttime>v.started_at,r.acctstarttime,v.started_at),NOW()
+        FROM cgnat_profile_periods v
+        INNER JOIN radacct r ON r.acctstarttime<NOW() AND (r.acctstoptime IS NULL OR r.acctstoptime>v.started_at)
+        LEFT JOIN cgnat_mappings m ON m.profile_id=v.profile_id AND m.private_ip=r.framedipaddress
+        WHERE v.profile_id=".$profileId." AND v.ended_at IS NULL AND v.superseded_at IS NULL";
+    if(!$conn->query($sql))throw new RuntimeException('Falha ao arquivar periodo CGNAT: '.$conn->error);
+    if(!$conn->query("UPDATE cgnat_profile_periods SET ended_at=NOW() WHERE profile_id=".$profileId." AND ended_at IS NULL AND superseded_at IS NULL"))throw new RuntimeException($conn->error);
+}
+
+function cgnatAssertNoActiveOverlap($conn,$profileId)
+{
+    $profileId=(int)$profileId;
+    $sql="SELECT m.private_ip FROM cgnat_mappings m INNER JOIN cgnat_mappings x ON x.private_ip=m.private_ip INNER JOIN cgnat_profiles p ON p.id=x.profile_id AND p.active=1 AND p.deleted_at IS NULL WHERE m.profile_id=".$profileId." AND x.profile_id<>".$profileId." LIMIT 1";
+    $row=$conn->query($sql);
+    if(!$row)throw new RuntimeException($conn->error);
+    if($row->num_rows)throw new RuntimeException('Este CGNAT sobrepoe uma rede privada que ja esta ativa. Arquive ou desative o mapeamento conflitante primeiro.');
+}
+
+function cgnatDeactivateProfile($conn,$profileId)
+{
+    $profileId=(int)$profileId;
+    $conn->begin_transaction();
+    try{
+        cgnatArchiveProfilePeriods($conn,$profileId);
+        if(!$conn->query("UPDATE cgnat_profiles SET active=0 WHERE id=".$profileId))throw new RuntimeException($conn->error);
+        $conn->commit();
+    }catch(Exception $e){$conn->rollback();throw $e;}
+}
+
 function cgnatNormalizeEffectiveDate($value)
 {
     if ($value === null || trim($value) === '') return date('Y-m-d H:i:s');
@@ -197,12 +231,15 @@ function cgnatActivateProfile($conn, $profileId, $effectiveDate=null)
     try {
         $startedAt = cgnatNormalizeEffectiveDate($effectiveDate);
         $escapedStart = $conn->real_escape_string($startedAt);
-        cgnatArchiveOpenPeriods($conn);
+        cgnatAssertNoActiveOverlap($conn,$profileId);
         if ($effectiveDate !== null && trim($effectiveDate) !== '') {
-            if (!$conn->query("UPDATE cgnat_profile_periods SET superseded_at=NOW() WHERE superseded_at IS NULL AND (started_at>='".$escapedStart."' OR ended_at>'".$escapedStart."')")) throw new RuntimeException($conn->error);
+            $affected="(profile_id=".$profileId." OR profile_id IN (SELECT DISTINCT x.profile_id FROM cgnat_mappings m INNER JOIN cgnat_mappings x ON x.private_ip=m.private_ip WHERE m.profile_id=".$profileId."))";
+            if (!$conn->query("UPDATE cgnat_profile_periods SET superseded_at=NOW() WHERE superseded_at IS NULL AND ".$affected." AND (started_at>='".$escapedStart."' OR ended_at>'".$escapedStart."')")) throw new RuntimeException($conn->error);
         }
-        $conn->query("UPDATE cgnat_profiles SET active=0 WHERE active=1");
-        if (!$conn->query("UPDATE cgnat_profiles SET active=1 WHERE id=".$profileId." AND deleted_at IS NULL") || $conn->affected_rows !== 1) throw new RuntimeException('Perfil CGNAT nao encontrado.');
+        $check=$conn->query("SELECT active FROM cgnat_profiles WHERE id=".$profileId." AND deleted_at IS NULL");
+        if(!$check||!$check->num_rows)throw new RuntimeException('Perfil CGNAT nao encontrado.');
+        if((int)$check->fetch_assoc()['active']===1 && ($effectiveDate===null || trim($effectiveDate)==='')){$conn->commit();return;}
+        if (!$conn->query("UPDATE cgnat_profiles SET active=1 WHERE id=".$profileId)) throw new RuntimeException($conn->error);
         if (!$conn->query("INSERT INTO cgnat_profile_periods (profile_id,started_at) VALUES (".$profileId.",'".$escapedStart."')")) throw new RuntimeException($conn->error);
         $conn->commit();
     } catch (Exception $e) {
@@ -217,22 +254,18 @@ function cgnatSaveProfile($conn, $result, $o, $activate=true)
     if ($name === '') $name = '001';
     $conn->begin_transaction();
     try {
-        if ($activate) {
-            cgnatArchiveOpenPeriods($conn);
-            $conn->query("UPDATE cgnat_profiles SET active=0 WHERE active=1");
-        }
-        $activeValue=$activate?1:0;
+        $activeValue=0;
         $stmt = $conn->prepare("INSERT INTO cgnat_profiles (name,private_cidr,public_cidr,clients_per_public,ports_per_client,first_port,last_port,source,active) VALUES (?,?,?,?,?,?,?,'generated',?)");
         $stmt->bind_param('sssiiiii', $name, $result['private_cidr'], $result['public_cidr'], $result['clients_per_public'], $result['ports'], $result['first_port'], $result['last_port'], $activeValue);
         if (!$stmt->execute()) throw new RuntimeException($stmt->error);
         $profileId = $stmt->insert_id; $stmt->close();
-        if ($activate && !$conn->query("INSERT INTO cgnat_profile_periods (profile_id,started_at) VALUES (".(int)$profileId.",NOW())")) throw new RuntimeException($conn->error);
         $map = $conn->prepare("INSERT INTO cgnat_mappings (profile_id,private_ip,public_ip,port_start,port_end) VALUES (?,?,?,?,?)");
         foreach ($rows as $row) {
             $map->bind_param('issii', $profileId, $row['private_ip'], $row['public_ip'], $row['port_start'], $row['port_end']);
             if (!$map->execute()) throw new RuntimeException($map->error);
         }
         $map->close(); $conn->commit();
+        if($activate)cgnatActivateProfile($conn,$profileId);
         return $profileId;
     } catch (Exception $e) {
         $conn->rollback(); throw $e;
