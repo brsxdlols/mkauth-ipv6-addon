@@ -20,6 +20,8 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
   if(isset($_POST['activate']) || isset($_POST['activate_retro'])){
    $effectiveDate=trim($_POST['effective_date']??'');
    cgnatActivateProfile($conn,$id,$effectiveDate);$message='CGNAT #'.$id.' definido como padrao atual'.($effectiveDate!==''?' com vigencia retroativa desde '.date('d/m/Y H:i',strtotime($effectiveDate)):'').'. Clientes online e conexoes dentro desta vigencia passam a usar este mapeamento; os periodos substituidos continuam preservados para auditoria.';
+  }elseif(isset($_POST['deactivate'])){
+   cgnatDeactivateProfile($conn,$id);$message='CGNAT #'.$id.' desativado. O periodo foi encerrado e preservado no historico.';
   }elseif(isset($_POST['delete'])){
    $check=$conn->query('SELECT active FROM cgnat_profiles WHERE id='.$id)->fetch_assoc();
    if(!$check)throw new RuntimeException('Perfil nao encontrado.');
