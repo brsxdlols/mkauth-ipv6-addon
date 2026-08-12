@@ -16,15 +16,10 @@ $conn = new mysqli("127.0.0.1","root","vertrigo","mkradius");
 ipv6RunMigrations($conn);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['activate_cgnat'])) {
-    $profileId = (int)($_POST['cgnat_profile_id'] ?? 0);
-    if ($profileId > 0) {
-        cgnatActivateProfile($conn, $profileId);
-    } else {
-        $conn->begin_transaction();
-        cgnatArchiveOpenPeriods($conn);
-        $conn->query("UPDATE cgnat_profiles SET active=0");
-        $conn->commit();
-    }
+    $selected=array_map('intval',(array)($_POST['cgnat_profile_ids']??array()));
+    $activeRows=$conn->query("SELECT id FROM cgnat_profiles WHERE active=1");
+    while($activeRows&&$row=$activeRows->fetch_assoc())if(!in_array((int)$row['id'],$selected,true))cgnatDeactivateProfile($conn,(int)$row['id']);
+    foreach($selected as $profileId)if($profileId>0)cgnatActivateProfile($conn,$profileId);
 }
 $cgnatProfiles = array();
 $profileResult = $conn->query("SELECT * FROM cgnat_profiles WHERE deleted_at IS NULL ORDER BY created_at DESC, id DESC");
@@ -116,7 +111,7 @@ function buildSQL($busca,$inicio,$fim,$modoResumo,$status=''){
         AND h1.id = h2.max_id
     ) h ON h.session_id = r.acctsessionid
     LEFT JOIN cgnat_mappings cm ON cm.private_ip=r.framedipaddress
-      AND cm.profile_id=(CASE WHEN r.acctstoptime IS NULL THEN (SELECT id FROM cgnat_profiles WHERE active=1 AND deleted_at IS NULL ORDER BY id DESC LIMIT 1) ELSE (SELECT v.profile_id FROM cgnat_profile_periods v WHERE v.superseded_at IS NULL AND v.started_at<r.acctstoptime AND (v.ended_at IS NULL OR v.ended_at>r.acctstarttime) ORDER BY v.started_at DESC LIMIT 1) END)
+      AND cm.profile_id=(CASE WHEN r.acctstoptime IS NULL THEN (SELECT p.id FROM cgnat_profiles p WHERE p.active=1 AND p.deleted_at IS NULL AND EXISTS (SELECT 1 FROM cgnat_mappings mx WHERE mx.profile_id=p.id AND mx.private_ip=r.framedipaddress) ORDER BY p.id DESC LIMIT 1) ELSE (SELECT v.profile_id FROM cgnat_profile_periods v WHERE v.superseded_at IS NULL AND v.started_at<r.acctstoptime AND (v.ended_at IS NULL OR v.ended_at>r.acctstarttime) AND EXISTS (SELECT 1 FROM cgnat_mappings mx WHERE mx.profile_id=v.profile_id AND mx.private_ip=r.framedipaddress) ORDER BY v.started_at DESC LIMIT 1) END)
     ";
 
     if($modoResumo){
@@ -179,7 +174,7 @@ $historyStats = ipv6HistoryStats($conn, $retentionMonths);
 <html lang="pt-BR" class="has-navbar-fixed-top">
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta charset="iso-8859-1">
+<meta charset="utf-8">
 
 <link href="../../estilos/mk-auth.css" rel="stylesheet" />
 <link href="addon-theme.css?v=20260809" rel="stylesheet" />
@@ -192,6 +187,9 @@ $historyStats = ipv6HistoryStats($conn, $retentionMonths);
 jQuery(function($){
     var timer=null, $input=$('input[name="busca"]'), $status=$('select[name="status"]'), $limit=$('select[name="limit"]'), $body=$('#ipv6-results'), $form=$('.ipv6-filters'), $info=$('#live-search-info');
     if(!$input.length||!$body.length)return;
+    /* Mantido apenas por compatibilidade de arquivo; o renderizador completo
+       no final da pagina inclui IPv4 publico e portas CGNAT. */
+    return;
     function safe(value){return $('<div>').text(value==null?'':value).html();}
     function searchNow(){
         clearTimeout(timer); $info.text('Buscando...');
@@ -347,7 +345,7 @@ jQuery(function($){
     <a href="cgnat_history.php">Historico de CGNAT</a>
     <a href="import.php">Importar mapeamento</a>
 </div>
-<?php if($cgnatProfiles && $showConfig):?><div class="ipv6-config" style="display:block;margin:14px 0"><form method="post" onsubmit="return confirm('ATENCAO: alterar o CGNAT padrao muda o cruzamento das novas conexoes. O periodo anterior sera encerrado e preservado para o historico. Confirma?')"><strong>CGNAT padrao usado no cruzamento:</strong> <select name="cgnat_profile_id"><option value="0">Nao usar mapeamento</option><?php foreach($cgnatProfiles as $profile):?><option value="<?=$profile['id']?>" <?=$profile['active']?'selected':''?>><?=strtoupper(htmlspecialchars($profile['name'],ENT_QUOTES,'UTF-8'))?> | desde <?=date('d/m/Y H:i',strtotime($profile['created_at']))?> | privado <?=$profile['private_cidr']?> | publico <?=$profile['public_cidr']?> | <?=$profile['ports_per_client']?> portas</option><?php endforeach;?></select> <button name="activate_cgnat" value="1">Aplicar CGNAT padrao</button><br><small>A troca fica registrada por data e hora. Conexoes antigas continuam vinculadas ao CGNAT vigente no periodo delas.</small></form></div><?php endif;?>
+<?php if($cgnatProfiles && $showConfig):?><div class="ipv6-config" style="display:block;margin:14px 0"><form method="post" onsubmit="return confirm('Os mapeamentos marcados serao usados simultaneamente. Perfis desmarcados terao seu periodo encerrado e preservado. Confirma?')"><strong>CGNATs usados simultaneamente no cruzamento:</strong><div style="display:grid;gap:8px;margin:10px 0"><?php foreach($cgnatProfiles as $profile):?><label><input type="checkbox" name="cgnat_profile_ids[]" value="<?=$profile['id']?>" <?=$profile['active']?'checked':''?>> <?=strtoupper(htmlspecialchars($profile['name'],ENT_QUOTES,'UTF-8'))?> | privado <?=$profile['private_cidr']?> | publico <?=$profile['public_cidr']?> | <?=$profile['ports_per_client']?> portas</label><?php endforeach;?></div><button name="activate_cgnat" value="1">Aplicar mapeamentos selecionados</button><br><small>Redes privadas diferentes podem ficar ativas juntas. Sobreposicoes sao bloqueadas automaticamente.</small></form></div><?php endif;?>
 <?php if (($_GET['module'] ?? '') === 'cgnat'): ?><div class="ipv6-coming"><strong>Modulo CGNAT</strong><br>O gerador opcional e a correlacao por IP publico + porta + horario serao adicionados aqui. O historico IPv4/IPv6 continuara independente.</div><?php endif; ?>
 
 <?php if ($configMessage): ?>
@@ -475,7 +473,6 @@ PrÃ³xima âž¡
 </div>
 </div>
 
-<script src="live-search.js?v=20260722-2"></script>
 <?php include('../../baixo.php'); ?>
 <script src="../../menu.js.php"></script>
 <?php include('../../rodape.php'); ?>
@@ -483,6 +480,8 @@ PrÃ³xima âž¡
 <script>
 (function(){
 var input=document.querySelector('input[name="busca"]'), status=document.querySelector('select[name="status"]'), limit=document.querySelector('select[name="limit"]'), body=document.getElementById('ipv6-results'), timer;
+/* Renderizador legado desativado: usava nove celulas e deslocava CGNAT/MAC. */
+return;
 if(!input||!body)return;
 function esc(v){var d=document.createElement('div');d.textContent=v==null?'':v;return d.innerHTML}
 function load(){clearTimeout(timer);timer=setTimeout(function(){var p=new URLSearchParams({q:input.value,status:status.value,limit:limit.value});fetch('search.php?'+p.toString(),{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(data){if(!data.rows)return;body.innerHTML=data.rows.map(function(r){return '<tr><td><span class="'+(r.online?'online':'offline')+'">&#9679; '+(r.online?'Online':'Offline')+'</span></td><td>'+esc(r.username)+'</td><td>'+esc(r.ipv6||'â€”')+'</td><td>'+esc(r.framedipaddress||'â€”')+'</td><td>'+esc(r.callingstationid||'â€”')+'</td><td>'+esc(r.acctstarttime||'')+'</td><td>'+esc(r.acctstoptime||'')+'</td><td>'+esc(r.duration)+'</td><td><a href="?busca='+encodeURIComponent(r.username)+'">&#128269;</a></td></tr>'}).join('')||'<tr><td colspan="9">Nenhum registro encontrado.</td></tr>'}).catch(function(){})},250)}
