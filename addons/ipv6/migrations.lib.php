@@ -17,7 +17,7 @@ function ipv6RunMigrations($conn)
         throw new RuntimeException('Nao foi possivel conectar ao banco do MK-Auth.');
     }
 
-    $conn->set_charset('latin1');
+    $conn->set_charset('utf8mb4');
 
     if (!ipv6ColumnExists($conn, 'radacct', 'delegatedipv6prefix')) {
         if (!$conn->query("ALTER TABLE radacct ADD COLUMN delegatedipv6prefix varchar(150) DEFAULT NULL")) {
