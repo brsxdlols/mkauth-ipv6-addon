@@ -30,6 +30,17 @@ mkdir -p "$TARGET_DIR/uploads"
 chown www-data:www-data "$TARGET_DIR/uploads" 2>/dev/null || true
 chmod 750 "$TARGET_DIR/uploads"
 
+# O topo protegido do MK-Auth depende deste runtime. Algumas versoes do
+# MK-Auth, principalmente as baseadas em PHP 7/HHVM, nao criam o vinculo
+# dentro da pasta do addon automaticamente.
+MK_AUTH_RUNTIME=/opt/mk-auth/include/addons.inc.hhvm
+if [ -f "$MK_AUTH_RUNTIME" ]; then
+    ln -sfn "$MK_AUTH_RUNTIME" "$TARGET_DIR/addons.class.php"
+    chown -h www-data:www-data "$TARGET_DIR/addons.class.php" 2>/dev/null || true
+else
+    echo "Aviso: runtime do MK-Auth nao encontrado em $MK_AUTH_RUNTIME" >&2
+fi
+
 php "$TARGET_DIR/install.php"
 
 if [ -f "$ADDON_MENU" ]; then
@@ -50,3 +61,4 @@ echo "Addon IPv6 instalado/atualizado."
 echo "Destino: $TARGET_DIR"
 echo "Backup anterior: $BACKUP_DIR"
 echo "Atalho: Conexoes > Painel IPv4/IPv6"
+
