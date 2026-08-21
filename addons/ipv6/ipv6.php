@@ -1,6 +1,3 @@
-Exit code: 0
-Wall time: 1.9 seconds
-Output:
 <?php
 // ===== MKAUTH =====
 require_once __DIR__ . '/bootstrap.lib.php';
@@ -49,18 +46,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['salvar_retencao'])) {
     $configMessage = 'Limpeza mensal automatica executada: ' . $scheduledCleanup['deleted'] . ' registro(s) removido(s).';
 }
 
-// PÃ¡gina atual (pega da URL: ?page=2)
-// Se nÃ£o existir, comeÃ§a na pÃ¡gina 1
+// Página atual (pega da URL: ?page=2)
+// Se não existir, começa na página 1
 $page = max(1, intval($_GET['page'] ?? 1));
 
-// Quantidade de registros por pÃ¡gina (30, 50 ou 100)
+// Quantidade de registros por página (30, 50 ou 100)
 $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 30;
 
-// SeguranÃ§a: sÃ³ permite esses valores
+// Segurança: só permite esses valores
 if(!in_array($limit,[30,50,100])) $limit = 30;
 
-// Calcula de onde comeÃ§ar no banco
-// Exemplo: pÃ¡gina 2 com 30 registros â†’ comeÃ§a do 30
+// Calcula de onde começar no banco
+// Exemplo: página 2 com 30 registros → começa do 30
 $offset = ($page - 1) * $limit;
 
 
@@ -161,7 +158,7 @@ function calcDuracao($ini,$fim){
     $fim = $fim ?: date('Y-m-d H:i:s');
     return gmdate("H:i:s", strtotime($fim) - strtotime($ini));
 }
-// TOTAL DE REGISTROS (para paginaÃ§Ã£o)
+// TOTAL DE REGISTROS (para paginação)
 $totalRegistros = $conn->query("
     SELECT COUNT(*) t FROM radacct
 ")->fetch_assoc()['t'];
@@ -223,7 +220,7 @@ jQuery(function($){
     margin-top:20px;
 }
 
-/* CABEÃ‡ALHO DA TABELA */
+/* CABEÇALHO DA TABELA */
 .ipv6-panel th {
     background:#1e293b;
     color:#f8fafc;
@@ -319,7 +316,7 @@ jQuery(function($){
 
 <body>
 
-<?php include('../../topo.php'); ?>
+<?php ob_start(); include('../../topo.php'); echo ipv6CleanMkAuthDiagnostic(ob_get_clean()); ?>
 
 <div class="container">
 
@@ -445,29 +442,29 @@ echo "<tr>
 <div style="margin-top:20px;">
 
 <?php
-// BOTÃƒO "ANTERIOR"
-// SÃ³ aparece se nÃ£o estiver na primeira pÃ¡gina
+// BOTÃO "ANTERIOR"
+// Só aparece se não estiver na primeira página
 if($page > 1):
 ?>
     <a href="?page=<?=$page-1?>&limit=<?=$limit?>">
-        â¬… Anterior
+        ⬅ Anterior
     </a>
 <?php endif; ?>
 
-<!-- Mostra nÃºmero da pÃ¡gina atual -->
+<!-- Mostra número da página atual -->
 <span style="margin:0 10px;">
-    PÃ¡gina <?=$page?> de <?=$totalPaginas?>
+    Página <?=$page?> de <?=$totalPaginas?>
 </span>
 
 <?php
-// BOTÃƒO "PRÃ“XIMA"
-// SÃ³ aparece se ainda tiver mais registros
+// BOTÃO "PRÓXIMA"
+// Só aparece se ainda tiver mais registros
 if($page * $limit < $totalRegistros):
 ?>
 
 
 <a href="?page=<?=$page+1?>&limit=<?=$limit?>&busca=<?=$busca?>&inicio=<?=$inicio?>&fim=<?=$fim?>">
-PrÃ³xima âž¡
+Próxima ➡
 </a>
 
 <?php endif; ?>
@@ -478,7 +475,7 @@ PrÃ³xima âž¡
 
 <?php include('../../baixo.php'); ?>
 <script src="../../menu.js.php"></script>
-<?php include('../../rodape.php'); ?>
+<?php if (is_file('../../rodape.php')) { include('../../rodape.php'); } ?>
 
 <script>
 (function(){
