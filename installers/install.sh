@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-SOURCE_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+SOURCE_DIR=${SOURCE_ROOT:-$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)}
 TARGET_DIR=/opt/mk-auth/admin/addons/ipv6
 ADDON_MENU=/opt/mk-auth/admin/addons/addon.js
 STAMP=$(date +%Y%m%d-%H%M%S)
@@ -61,4 +61,5 @@ echo "Addon IPv6 instalado/atualizado."
 echo "Destino: $TARGET_DIR"
 echo "Backup anterior: $BACKUP_DIR"
 echo "Atalho: Conexoes > Painel IPv4/IPv6"
+exit 0
 
