@@ -7,15 +7,21 @@ if (function_exists('mysqli_report')) {
 }
 
 /*
- * Nao carregue addons.class.php aqui. Em algumas versoes do MK-Auth esse
- * arquivo inicia uma sessao com outro nome e tambem imprime o diagnostico do
- * executor ("Exit code / Wall time / Output") na resposta HTTP. Alem de sujar
- * o topo, a sessao ja aberta impedia a leitura do cookie "mka" e causava
- * "Acesso negado" para um administrador realmente autenticado.
- *
- * O addon usa seu proprio manifest.json e as paginas carregam topo.php
- * diretamente; portanto esse runtime nao e necessario.
+ * O runtime do MK-Auth precisa abrir a sessao e fornecer as variaveis usadas
+ * por topo.php. Algumas edicoes imprimem tambem o diagnostico do executor;
+ * por isso ele e carregado dentro de um buffer descartavel.
  */
+$ipv6AddonClass = is_file(__DIR__.'/addons.class.php')
+    ? __DIR__.'/addons.class.php'
+    : dirname(__DIR__).'/addons.class.php';
+if (is_file($ipv6AddonClass)) {
+    $ipv6OutputLevel = ob_get_level();
+    ob_start();
+    include_once $ipv6AddonClass;
+    while (ob_get_level() > $ipv6OutputLevel) {
+        ob_end_clean();
+    }
+}
 
 function ipv6StartMkAuthSession()
 {
@@ -85,5 +91,15 @@ function ipv6LoadAddonManifest()
         }
     }
     return (object) array('name' => 'Painel IPv4 e IPv6', 'version' => '1.0');
+}
+
+function ipv6CleanMkAuthDiagnostic($html)
+{
+    return preg_replace(
+        '/^\s*Exit code:\s*\d+\s*Wall time:\s*[0-9.]+\s*seconds\s*Output:\s*/i',
+        '',
+        (string) $html,
+        1
+    );
 }
 
