@@ -6,14 +6,16 @@ if (function_exists('mysqli_report')) {
     mysqli_report(MYSQLI_REPORT_OFF);
 }
 
-// Carrega o runtime visual/oficial do MK-Auth quando presente. Algumas
-// instalacoes fornecem MKAC_BOT, Manifest e dados do topo somente aqui.
-$ipv6AddonClass = is_file(__DIR__.'/addons.class.php')
-    ? __DIR__.'/addons.class.php'
-    : dirname(__DIR__).'/addons.class.php';
-if (is_file($ipv6AddonClass)) {
-    include_once $ipv6AddonClass;
-}
+/*
+ * Nao carregue addons.class.php aqui. Em algumas versoes do MK-Auth esse
+ * arquivo inicia uma sessao com outro nome e tambem imprime o diagnostico do
+ * executor ("Exit code / Wall time / Output") na resposta HTTP. Alem de sujar
+ * o topo, a sessao ja aberta impedia a leitura do cookie "mka" e causava
+ * "Acesso negado" para um administrador realmente autenticado.
+ *
+ * O addon usa seu proprio manifest.json e as paginas carregam topo.php
+ * diretamente; portanto esse runtime nao e necessario.
+ */
 
 function ipv6StartMkAuthSession()
 {
