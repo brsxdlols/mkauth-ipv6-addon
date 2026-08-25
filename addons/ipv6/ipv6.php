@@ -83,6 +83,10 @@ if(isset($_GET['export'])){
 
 $busca  = $_GET['busca'] ?? '';
 $busca = $conn->real_escape_string($busca);
+$publicIpRaw = trim($_GET['public_ip'] ?? '');
+$publicPortRaw = trim($_GET['public_port'] ?? '');
+$publicIp = filter_var($publicIpRaw, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) ? $conn->real_escape_string($publicIpRaw) : '';
+$publicPort = ctype_digit($publicPortRaw) && (int)$publicPortRaw >= 1 && (int)$publicPortRaw <= 65535 ? (int)$publicPortRaw : 0;
 $inicio = $_GET['inicio'] ?? '';
 $fim    = $_GET['fim'] ?? '';
 $status = in_array(($_GET['status'] ?? ''), array('online','offline'), true) ? $_GET['status'] : '';
@@ -93,10 +97,10 @@ if(!in_array($limit, [30,50,100])) $limit = 30;
 
 $offset = ($page-1)*$limit;
 
-$modoResumo = empty($busca) && empty($inicio) && empty($fim) && empty($status);
+$modoResumo = empty($busca) && empty($publicIp) && empty($publicPort) && empty($inicio) && empty($fim) && empty($status);
 
 // ===== SQL =====
-function buildSQL($busca,$inicio,$fim,$modoResumo,$status=''){
+function buildSQL($busca,$inicio,$fim,$modoResumo,$status='',$publicIp='',$publicPort=0){
 
     $joinIPv6 = "
     LEFT JOIN (
@@ -140,6 +144,9 @@ function buildSQL($busca,$inicio,$fim,$modoResumo,$status=''){
             cm.public_ip LIKE '%$busca%'".((ctype_digit($busca)) ? " OR $busca BETWEEN cm.port_start AND cm.port_end" : "")."
         )";
     }
+
+    if($publicIp !== '') $sql .= " AND cm.public_ip = '$publicIp'";
+    if($publicPort > 0) $sql .= " AND $publicPort BETWEEN cm.port_start AND cm.port_end";
 
     if($inicio && $fim){
         $sql .= " AND r.acctstarttime BETWEEN '$inicio' AND '$fim'";
@@ -307,7 +314,7 @@ jQuery(function($){
     font-size:13px;
     margin-top:10px;
 }
-.content-wrapper{width:calc(100vw - 48px);max-width:1800px;margin-left:50%;transform:translateX(-50%)}.ipv6-nav{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0 18px}.ipv6-nav a{margin:0;padding:10px 14px;border-radius:7px;background:#1e293b;color:#e2e8f0;text-decoration:none;border:1px solid #26364d}.ipv6-nav a:nth-child(2){background:#223149}.ipv6-nav a:nth-child(3){background:#1b2b42}.ipv6-nav a:nth-child(4){background:#25344b}.ipv6-nav a.active{background:#2563eb;color:#fff;border-color:#3b82f6}.ipv6-coming{margin:12px 0;padding:16px;border:1px solid #334155;background:#111c31;border-radius:8px}.ipv6-filters{display:grid;grid-template-columns:90px minmax(250px,1fr) 150px minmax(190px,1fr) minmax(190px,1fr) auto;gap:9px;align-items:center;background:#111c31;border:1px solid #334155;padding:12px;border-radius:9px}.ipv6-filters input,.ipv6-filters select{width:100%;margin:0;box-sizing:border-box;border:1px solid #475569;background:#f8fafc;color:#0f172a}.ipv6-config{background:#111c31;border-color:#334155}.ipv6-muted{color:#94a3b8}.ipv6-config-btn{background:#1e293b;color:#e2e8f0!important}@media(max-width:900px){.content-wrapper{width:calc(100vw - 20px)}.ipv6-filters{grid-template-columns:1fr 1fr}.ipv6-filters button{width:100%}}
+.content-wrapper{width:calc(100vw - 48px);max-width:1800px;margin-left:50%;transform:translateX(-50%)}.ipv6-nav{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0 18px}.ipv6-nav a{margin:0;padding:10px 14px;border-radius:7px;background:#1e293b;color:#e2e8f0;text-decoration:none;border:1px solid #26364d}.ipv6-nav a:nth-child(2){background:#223149}.ipv6-nav a:nth-child(3){background:#1b2b42}.ipv6-nav a:nth-child(4){background:#25344b}.ipv6-nav a.active{background:#2563eb;color:#fff;border-color:#3b82f6}.ipv6-coming{margin:12px 0;padding:16px;border:1px solid #334155;background:#111c31;border-radius:8px}.ipv6-filters{display:grid;grid-template-columns:80px minmax(210px,1.2fr) 145px 110px 130px minmax(165px,1fr) minmax(165px,1fr) auto;gap:9px;align-items:center;background:#111c31;border:1px solid #334155;padding:12px;border-radius:9px}.ipv6-filters input,.ipv6-filters select{width:100%;margin:0;box-sizing:border-box;border:1px solid #475569;background:#f8fafc;color:#0f172a}.ipv6-config{background:#111c31;border-color:#334155}.ipv6-muted{color:#94a3b8}.ipv6-config-btn{background:#1e293b;color:#e2e8f0!important}@media(max-width:1100px){.content-wrapper{width:calc(100vw - 20px)}.ipv6-filters{grid-template-columns:1fr 1fr}.ipv6-filters button{width:100%}}
 .ipv6-panel{background:#f8fbff;color:#19324d;border:1px solid #bfdbef;box-shadow:0 8px 24px rgba(15,23,42,.08)}
 .ipv6-panel h2{color:#102a43}.ipv6-panel th{background:#19324d;color:#fff}.ipv6-panel td{border-bottom-color:#d8e6ef;color:#19324d}.ipv6-panel tr:hover{background:#eaf6fd}.ipv6-panel input,.ipv6-panel select{background:#fff;color:#102a43;border:1px solid #8bbbd5;border-radius:6px}.ipv6-panel a{color:#1677a6}.ipv6-nav a{background:#e1f1fb!important;color:#173b57!important;border:1px solid #b8dcef!important;font-weight:600}.ipv6-nav a.active{background:#38a9dc!important;color:#fff!important}.ipv6-filters{background:#fff!important;border-color:#bdd8ea!important}.ipv6-config{background:#f4faff!important;border-color:#b8d8e9!important;color:#244761}.ipv6-muted{color:#486b82!important}
 </style>
@@ -343,7 +350,7 @@ jQuery(function($){
     <a href="mikrotik.php">Scripts MikroTik</a>
     <a href="cgnat.php">CGNAT</a>
     <a href="cgnat_history.php">Historico de CGNAT</a>
-    <a href="import.php">Importar mapeamento</a>
+    <a href="#" onclick="alert('Em constru&ccedil;&atilde;o');return false" aria-disabled="true" title="Em construcao">Importar mapeamento</a>
 </div>
 <?php if($cgnatProfiles && $showConfig):?><div class="ipv6-config" style="display:block;margin:14px 0"><form method="post" onsubmit="return confirm('Os mapeamentos marcados serao usados simultaneamente. Perfis desmarcados terao seu periodo encerrado e preservado. Confirma?')"><strong>CGNATs usados simultaneamente no cruzamento:</strong><div style="display:grid;gap:8px;margin:10px 0"><?php foreach($cgnatProfiles as $profile):?><label><input type="checkbox" name="cgnat_profile_ids[]" value="<?=$profile['id']?>" <?=$profile['active']?'checked':''?>> <?=strtoupper(htmlspecialchars($profile['name'],ENT_QUOTES,'UTF-8'))?> | privado <?=$profile['private_cidr']?> | publico <?=$profile['public_cidr']?> | <?=$profile['ports_per_client']?> portas</label><?php endforeach;?></div><button name="activate_cgnat" value="1">Aplicar mapeamentos selecionados</button><br><small>Redes privadas diferentes podem ficar ativas juntas. Sobreposicoes sao bloqueadas automaticamente.</small></form></div><?php endif;?>
 <?php if (($_GET['module'] ?? '') === 'cgnat'): ?><div class="ipv6-coming"><strong>Modulo CGNAT</strong><br>O gerador opcional e a correlacao por IP publico + porta + horario serao adicionados aqui. O historico IPv4/IPv6 continuara independente.</div><?php endif; ?>
@@ -390,6 +397,8 @@ jQuery(function($){
 
 <input name="busca" value="<?=htmlspecialchars($_GET['busca'] ?? '',ENT_QUOTES,'ISO-8859-1')?>" placeholder="Usuario, IPv4, IPv6 ou MAC...">
 <select name="status"><option value="">Todos status</option><option value="online" <?=($status==='online'?'selected':'')?>>Online</option><option value="offline" <?=($status==='offline'?'selected':'')?>>Offline</option></select>
+<input name="public_ip" inputmode="decimal" value="<?=htmlspecialchars($publicIpRaw,ENT_QUOTES,'ISO-8859-1')?>" placeholder="IP p&uacute;blico">
+<input name="public_port" inputmode="numeric" value="<?=htmlspecialchars($publicPortRaw,ENT_QUOTES,'ISO-8859-1')?>" placeholder="Porta">
 <input type="datetime-local" name="inicio" value="<?=$inicio?>">
 <input type="datetime-local" name="fim" value="<?=$fim?>">
 <button>Buscar</button>
@@ -414,7 +423,7 @@ jQuery(function($){
 <tbody id="ipv6-results">
 
 <?php
-$sql = buildSQL($busca,$inicio,$fim,$modoResumo,$status)." ORDER BY r.radacctid DESC LIMIT $limit OFFSET $offset";
+$sql = buildSQL($busca,$inicio,$fim,$modoResumo,$status,$publicIp,$publicPort)." ORDER BY r.radacctid DESC LIMIT $limit OFFSET $offset";
 $res=$conn->query($sql);
 
 while($r=$res->fetch_assoc()){
@@ -463,7 +472,7 @@ if($page * $limit < $totalRegistros):
 ?>
 
 
-<a href="?page=<?=$page+1?>&limit=<?=$limit?>&busca=<?=$busca?>&inicio=<?=$inicio?>&fim=<?=$fim?>">
+<a href="?page=<?=$page+1?>&limit=<?=$limit?>&busca=<?=urlencode($busca)?>&public_ip=<?=urlencode($publicIpRaw)?>&public_port=<?=urlencode($publicPortRaw)?>&inicio=<?=$inicio?>&fim=<?=$fim?>&status=<?=$status?>">
 Próxima ➡
 </a>
 
@@ -491,12 +500,12 @@ input.addEventListener('input',load);status.addEventListener('change',load);limi
 
 <script>
 (function(){
-var input=document.querySelector('input[name="busca"]'),status=document.querySelector('select[name="status"]'),limit=document.querySelector('select[name="limit"]'),body=document.getElementById('ipv6-results'),info=document.getElementById('live-search-info'),timer;
+var input=document.querySelector('input[name="busca"]'),publicIp=document.querySelector('input[name="public_ip"]'),publicPort=document.querySelector('input[name="public_port"]'),status=document.querySelector('select[name="status"]'),limit=document.querySelector('select[name="limit"]'),body=document.getElementById('ipv6-results'),info=document.getElementById('live-search-info'),timer;
 if(!input||!body)return;
 function esc(v){var d=document.createElement('div');d.textContent=v==null?'':v;return d.innerHTML}
 function render(r){return '<tr><td><span class="'+(r.online?'online':'offline')+'">&#9679; '+(r.online?'Online':'Offline')+'</span></td><td>'+esc(r.username)+'</td><td>'+esc(r.ipv6||'-')+'</td><td>'+esc(r.framedipaddress||'-')+'</td><td>'+esc(r.public_ip||'-')+'</td><td>'+esc(r.port_start?(r.port_start+'-'+r.port_end):'-')+'</td><td>'+esc(r.callingstationid||'-')+'</td><td>'+esc(r.acctstarttime||'')+'</td><td>'+esc(r.acctstoptime||'')+'</td><td>'+esc(r.duration)+'</td><td><a href="?busca='+encodeURIComponent(r.username)+'">&#128269;</a></td></tr>'}
-function load(e){if(e){e.stopImmediatePropagation()}clearTimeout(timer);if(info)info.textContent='Buscando...';timer=setTimeout(function(){var p=new URLSearchParams({q:input.value,status:status.value,limit:limit.value});fetch('search.php?'+p.toString(),{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(data){var rows=data.rows||[];body.innerHTML=rows.map(render).join('')||'<tr><td colspan="11">Nenhum registro encontrado.</td></tr>';if(info)info.textContent=rows.length+' registro(s) exibido(s).'}).catch(function(){if(info)info.textContent='Falha na busca.'})},250)}
-input.addEventListener('input',load,true);status.addEventListener('change',load,true);limit.addEventListener('change',load,true);
+function load(e){if(e){e.stopImmediatePropagation()}clearTimeout(timer);if(info)info.textContent='Buscando...';timer=setTimeout(function(){var p=new URLSearchParams({q:input.value,public_ip:publicIp.value,public_port:publicPort.value,status:status.value,limit:limit.value});fetch('search.php?'+p.toString(),{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(data){var rows=data.rows||[];body.innerHTML=rows.map(render).join('')||'<tr><td colspan="11">Nenhum registro encontrado.</td></tr>';if(info)info.textContent=rows.length+' registro(s) exibido(s).'}).catch(function(){if(info)info.textContent='Falha na busca.'})},250)}
+input.addEventListener('input',load,true);publicIp.addEventListener('input',load,true);publicPort.addEventListener('input',load,true);status.addEventListener('change',load,true);limit.addEventListener('change',load,true);
 })();
 </script>
 
