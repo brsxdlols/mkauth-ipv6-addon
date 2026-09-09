@@ -114,7 +114,9 @@ function cgnatGenerate($o)
         $lines[]='';
     }
     $lines[] = '/ip firewall nat;';
-    $lines[] = 'add action=jump chain=srcnat src-address='.$private['cidr'].$ignoreMatch.' jump-target="'.$chain.'" comment="'.$comment.'";';
+    $jump = 'add action=jump chain=srcnat src-address='.$private['cidr'].$ignoreMatch;
+    if ($wan !== '') $jump .= ' '.$interfaceMode.'="'.$wan.'"';
+    $lines[] = $jump.' jump-target="'.$chain.'" comment="'.$comment.'";';
     $lines[] = '';
 
     $ranges = array();
@@ -126,13 +128,11 @@ function cgnatGenerate($o)
         $ranges[] = array($portStart, $portEnd);
         foreach ($protocols as $proto) {
             $line = 'add action='.$action.' chain="'.$chain.'"';
-            if ($wan !== '') $line .= ' '.$interfaceMode.'="'.$wan.'"';
             $line .= ' protocol='.$proto.' src-address='.$groupCidr.' to-addresses='.$public['cidr'].' to-ports='.$portStart.'-'.$portEnd.' comment="'.$comment.'";';
             $lines[] = $line;
         }
         if (!empty($o['nat_others'])) {
             $line = 'add action='.$action.' chain="'.$chain.'"';
-            if ($wan !== '') $line .= ' '.$interfaceMode.'="'.$wan.'"';
             $line .= ' src-address='.$groupCidr.' to-addresses='.$public['cidr'].' comment="'.$comment.'";';
             $lines[] = $line;
         }
