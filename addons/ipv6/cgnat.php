@@ -7,10 +7,10 @@ ipv6RequireMkAuthLogin();
 $conn=new mysqli('127.0.0.1','root','vertrigo','mkradius');
 ipv6RunMigrations($conn);
 
-$defaults=array('name'=>'','public'=>'','private_start'=>'','ratio'=>'32','ports_choice'=>'2016','type'=>'netmap','protocol'=>'tcp_udp','interface_mode'=>'interface','interface'=>'','exception_list'=>'','routeros'=>'7','blackhole'=>'0','fasttrack'=>'0','nat_others'=>'1','linked'=>'1');
+$defaults=array('name'=>'','public'=>'','private_start'=>'','ratio'=>'32','ports_choice'=>'2016','type'=>'netmap','protocol'=>'tcp_udp','interface_mode'=>'none','interface'=>'','exception_list'=>'','routeros'=>'7','blackhole'=>'0','fasttrack'=>'0','nat_others'=>'1','linked'=>'1');
 $o=$defaults;
 foreach($o as $key=>$value){$o[$key]=isset($_POST[$key])?trim((string)$_POST[$key]):ipv6GetSetting($conn,'cgnat_'.$key,$value);}
-if($_SERVER['REQUEST_METHOD']!=='POST'){$o['public']='';$o['private_start']='';$o['name']='';$o['interface']='';$o['exception_list']='';}
+if($_SERVER['REQUEST_METHOD']!=='POST'){$o['public']='';$o['private_start']='';$o['name']='';$o['interface']='';$o['exception_list']='';$o['type']='netmap';$o['protocol']='tcp_udp';$o['interface_mode']='none';$o['blackhole']='0';}
 foreach(array('blackhole','fasttrack','nat_others','linked') as $check)$o[$check]=isset($_POST['generate'])?(isset($_POST[$check])?'1':'0'):$o[$check];
 $result=null;$error='';$message='';$mappingRows=array();$historyProfileId=(int)($_POST['history_profile_id']??0);
 if($_SERVER['REQUEST_METHOD']==='POST'){
@@ -57,8 +57,8 @@ function h($v){return htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');}
 <div class="field"><label>Nome do CGNAT / chain</label><div class="hint" style="margin:0 0 6px">Coloque qualquer numero ou nome para separar de outros CGNAT existentes. Se ficar vazio, sera usado 001.</div><div class="chain-input"><span class="chain-prefix">CGNAT-</span><input name="name" maxlength="16" placeholder="001 OU LINK1" value="<?=h(strtoupper($o['name']))?>" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9_-]/g,'')"></div></div>
 <div class="field"><label>Tipo do CGNAT</label><select name="type"><option value="netmap" <?=$o['type']==='netmap'?'selected':''?>>NETMAP</option><option value="src-nat" <?=$o['type']==='src-nat'?'selected':''?>>SRC-NAT</option></select></div>
 <div class="field"><label>Protocolos</label><select name="protocol"><option value="tcp_udp" <?=$o['protocol']==='tcp_udp'?'selected':''?>>TCP + UDP (recomendado)</option><option value="tcp" <?=$o['protocol']==='tcp'?'selected':''?>>Somente TCP</option></select></div>
-<div class="field"><label>Aplicar saida por</label><select name="interface_mode"><option value="interface" <?=$o['interface_mode']==='interface'?'selected':''?>>Interface de saida</option><option value="list" <?=$o['interface_mode']==='list'?'selected':''?>>Interface-list de saida</option></select></div>
-<div class="field"><label>Nome da interface ou interface-list</label><input name="interface" placeholder="WAN ou LISTA-WAN" value="<?=h($o['interface'])?>"></div>
+<div class="field"><label>Aplicar saida por</label><select id="interface-mode" name="interface_mode"><option value="none" <?=$o['interface_mode']==='none'?'selected':''?>>Nao usar filtro de saida</option><option value="interface" <?=$o['interface_mode']==='interface'?'selected':''?>>Interface de saida</option><option value="list" <?=$o['interface_mode']==='list'?'selected':''?>>Interface-list de saida</option></select></div>
+<div class="field"><label>Nome da interface ou interface-list</label><input id="interface-name" name="interface" placeholder="WAN ou LISTA-WAN" value="<?=h($o['interface'])?>" <?=$o['interface_mode']!=='none'?'required':'disabled'?> aria-describedby="interface-hint"><small id="interface-hint" class="hint">Obrigatorio ao selecionar interface ou interface-list de saida.</small></div>
 <div class="field"><label>Excecao por address-list (opcional)</label><input name="exception_list" placeholder="LISTA_SEM_CGNAT" value="<?=h($o['exception_list'])?>"></div>
 <div class="field"><label>RouterOS</label><select name="routeros"><option value="6" <?=$o['routeros']==='6'?'selected':''?>>Versao 6</option><option value="7" <?=$o['routeros']==='7'?'selected':''?>>Versao 7</option></select></div>
 </div><div class="checks"><label><input type="checkbox" name="linked" <?=$o['linked']==='1'?'checked':''?>> Vincular configuracao aos logs</label><label><input type="checkbox" name="blackhole" <?=$o['blackhole']==='1'?'checked':''?>> Criar blackhole</label><label><input type="checkbox" name="fasttrack" <?=$o['fasttrack']==='1'?'checked':''?>> Incluir FastTrack</label><label><input type="checkbox" name="nat_others" <?=$o['nat_others']==='1'?'checked':''?>> NAT para outros protocolos</label></div><p class="hint">FastTrack e opcional: pode interferir com Simple Queues, Queue Tree global, IPsec e algumas formas de monitoramento.</p></section>
@@ -67,6 +67,18 @@ function h($v){return htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');}
 <div id="activation-modal" class="activation-modal" role="dialog" aria-modal="true" aria-labelledby="activation-title"><div class="activation-dialog"><button type="button" class="activation-close" onclick="closeActivationModal()" aria-label="Fechar">&times;</button><h3 id="activation-title">Quando este CGNAT foi ativado?</h3><p>Escolha a data que sera usada para iniciar o cruzamento de IP privado, IP publico e portas.</p><label class="activation-option"><input type="radio" name="activation_choice" value="today" checked onchange="toggleActivationDate()"> Ativar hoje, a partir de agora</label><label class="activation-option"><input type="radio" name="activation_choice" value="retroactive" onchange="toggleActivationDate()"> Aplicar com data retroativa</label><div id="retroactive-field" class="field" style="display:none;margin-top:12px"><label for="retroactive-date">Data e hora de ativacao</label><input type="datetime-local" id="retroactive-date" max="<?=date('Y-m-d\TH:i')?>"></div><div class="actions"><button type="button" class="btn secondary" onclick="closeActivationModal()">Cancelar</button><button type="submit" class="btn" form="activation-form" name="save_mapping" value="1" onclick="return prepareActivation()">Confirmar e ativar</button></div></div></div>
 <section class="card mapping mapping-print"><div class="print-title">MAPEAMENTO DAS PORTAS</div><div class="print-meta"><?=h(strtoupper($o['name']))?> | <?=h($result['private_cidr'])?> &gt; <?=h($result['public_cidr'])?> | <?=date('d/m/Y H:i')?></div><div class="actions mapping-actions"><button class="btn secondary" type="button" onclick="window.print()">Imprimir / salvar pela pagina</button><button class="btn" type="button" onclick="navigator.clipboard.writeText(document.getElementById('mapping-copy').innerText)">Copiar tabela</button></div><table id="mapping-copy"><thead><tr><th>IP Publico</th><th>Range de Portas</th><th>IP Privado</th></tr></thead><tbody><?php foreach($mappingRows as $row):?><tr><td><?=h($row['public_ip'])?></td><td><?=$row['port_start']?> a <?=$row['port_end']?></td><td><?=h($row['private_ip'])?></td></tr><?php endforeach;?></tbody></table></section><?php endif;?>
 </main></div><?php include('../../baixo.php'); ?><script src="../../menu.js.php"></script><?php if (is_file('../../rodape.php')) { include('../../rodape.php'); } ?><script>
+(function(){
+var interfaceMode=document.getElementById('interface-mode'),interfaceName=document.getElementById('interface-name');
+function syncInterface(){
+ var required=interfaceMode.value!=='none';
+ interfaceName.disabled=!required;
+ interfaceName.required=required;
+ interfaceName.setCustomValidity(required&&interfaceName.value.trim()===''?'Informe o nome da interface ou interface-list de saida.':'');
+}
+interfaceMode.addEventListener('change',syncInterface);
+interfaceName.addEventListener('input',syncInterface);
+syncInterface();
+})();
 (function(){var privateInput=document.getElementById('private-start'),publicInput=document.getElementById('public-cidr'),portsInput=document.getElementById('ports-choice');
 function ipToInt(ip){var p=ip.trim().split('.');if(p.length!==4)return null;var n=0;for(var i=0;i<4;i++){var v=Number(p[i]);if(!Number.isInteger(v)||v<0||v>255)return null;n=n*256+v}return n}
 function intToIp(n){return [Math.floor(n/16777216)%256,Math.floor(n/65536)%256,Math.floor(n/256)%256,n%256].join('.')}
