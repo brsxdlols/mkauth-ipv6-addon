@@ -79,7 +79,10 @@ function cgnatGenerate($o)
     $chain = substr('CGNAT-'.$name, 0, 28);
     $comment = 'VPSCLOUD-'.$chain;
     $wan = trim(isset($o['interface']) ? $o['interface'] : '');
-    $interfaceMode = (isset($o['interface_mode']) && $o['interface_mode'] === 'list') ? 'out-interface-list' : 'out-interface';
+    $mode = isset($o['interface_mode']) ? $o['interface_mode'] : ($wan === '' ? 'none' : 'interface');
+    if (!in_array($mode, array('none', 'interface', 'list'), true)) throw new InvalidArgumentException('Escolha uma opcao valida para aplicar a saida.');
+    if ($mode !== 'none' && $wan === '') throw new InvalidArgumentException('Informe o nome da interface ou interface-list de saida.');
+    $interfaceMode = $mode === 'list' ? 'out-interface-list' : 'out-interface';
     $protocols = (isset($o['protocol']) && $o['protocol'] === 'tcp') ? array('tcp') : array('tcp', 'udp');
     $action = (isset($o['type']) && $o['type'] === 'src-nat') ? 'src-nat' : 'netmap';
     $ignore = trim(isset($o['exception_list']) ? $o['exception_list'] : (isset($o['ignore']) ? $o['ignore'] : ''));
@@ -115,7 +118,7 @@ function cgnatGenerate($o)
     }
     $lines[] = '/ip firewall nat;';
     $jump = 'add action=jump chain=srcnat src-address='.$private['cidr'].$ignoreMatch;
-    if ($wan !== '') $jump .= ' '.$interfaceMode.'="'.$wan.'"';
+    if ($mode !== 'none') $jump .= ' '.$interfaceMode.'="'.$wan.'"';
     $lines[] = $jump.' jump-target="'.$chain.'" comment="'.$comment.'";';
     $lines[] = '';
 
