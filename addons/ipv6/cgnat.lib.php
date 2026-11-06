@@ -236,13 +236,13 @@ function cgnatActivateProfile($conn, $profileId, $effectiveDate=null)
     try {
         $startedAt = cgnatNormalizeEffectiveDate($effectiveDate);
         $escapedStart = $conn->real_escape_string($startedAt);
+        $check=$conn->query("SELECT active FROM cgnat_profiles WHERE id=".$profileId." AND deleted_at IS NULL FOR UPDATE");
+        if(!$check||!$check->num_rows)throw new RuntimeException('Perfil CGNAT nao encontrado.');
         cgnatAssertNoActiveOverlap($conn,$profileId);
         if ($effectiveDate !== null && trim($effectiveDate) !== '') {
             $affected="(profile_id=".$profileId." OR profile_id IN (SELECT DISTINCT x.profile_id FROM cgnat_mappings m INNER JOIN cgnat_mappings x ON x.private_ip=m.private_ip WHERE m.profile_id=".$profileId."))";
             if (!$conn->query("UPDATE cgnat_profile_periods SET superseded_at=NOW() WHERE superseded_at IS NULL AND ".$affected." AND (started_at>='".$escapedStart."' OR ended_at>'".$escapedStart."')")) throw new RuntimeException($conn->error);
         }
-        $check=$conn->query("SELECT active FROM cgnat_profiles WHERE id=".$profileId." AND deleted_at IS NULL");
-        if(!$check||!$check->num_rows)throw new RuntimeException('Perfil CGNAT nao encontrado.');
         if((int)$check->fetch_assoc()['active']===1 && ($effectiveDate===null || trim($effectiveDate)==='')){$conn->commit();return;}
         if (!$conn->query("UPDATE cgnat_profiles SET active=1 WHERE id=".$profileId)) throw new RuntimeException($conn->error);
         if (!$conn->query("INSERT INTO cgnat_profile_periods (profile_id,started_at) VALUES (".$profileId.",'".$escapedStart."')")) throw new RuntimeException($conn->error);
@@ -257,11 +257,14 @@ function cgnatSaveProfile($conn, $result, $o, $activate=true)
     $rows = cgnatMappingRows($result);
     $name = trim(isset($o['name']) ? $o['name'] : '001');
     if ($name === '') $name = '001';
+    $script = $result['script'];
+    $optionsJson = json_encode($o, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if ($optionsJson === false) throw new RuntimeException('Nao foi possivel salvar as opcoes do script.');
     $conn->begin_transaction();
     try {
         $activeValue=0;
-        $stmt = $conn->prepare("INSERT INTO cgnat_profiles (name,private_cidr,public_cidr,clients_per_public,ports_per_client,first_port,last_port,source,active) VALUES (?,?,?,?,?,?,?,'generated',?)");
-        $stmt->bind_param('sssiiiii', $name, $result['private_cidr'], $result['public_cidr'], $result['clients_per_public'], $result['ports'], $result['first_port'], $result['last_port'], $activeValue);
+        $stmt = $conn->prepare("INSERT INTO cgnat_profiles (name,private_cidr,public_cidr,clients_per_public,ports_per_client,first_port,last_port,source,active,script_rsc,options_json) VALUES (?,?,?,?,?,?,?,'generated',?,?,?)");
+        $stmt->bind_param('sssiiiiiss', $name, $result['private_cidr'], $result['public_cidr'], $result['clients_per_public'], $result['ports'], $result['first_port'], $result['last_port'], $activeValue, $script, $optionsJson);
         if (!$stmt->execute()) throw new RuntimeException($stmt->error);
         $profileId = $stmt->insert_id; $stmt->close();
         $map = $conn->prepare("INSERT INTO cgnat_mappings (profile_id,private_ip,public_ip,port_start,port_end) VALUES (?,?,?,?,?)");
@@ -274,6 +277,29 @@ function cgnatSaveProfile($conn, $result, $o, $activate=true)
         return $profileId;
     } catch (Exception $e) {
         $conn->rollback(); throw $e;
+    }
+}
+
+function cgnatDeleteTestProfile($conn, $profileId)
+{
+    $profileId = (int)$profileId;
+    if ($profileId < 1) throw new InvalidArgumentException('Perfil CGNAT invalido.');
+    $conn->begin_transaction();
+    try {
+        $check = $conn->query("SELECT active FROM cgnat_profiles WHERE id=".$profileId." FOR UPDATE");
+        if (!$check || !$check->num_rows) throw new RuntimeException('Perfil CGNAT nao encontrado.');
+        if ((int)$check->fetch_assoc()['active'] === 1) throw new RuntimeException('Um CGNAT ativo nao pode ser excluido. Desative-o e preserve seu historico.');
+        foreach (array('cgnat_profile_periods', 'cgnat_connection_archive') as $table) {
+            $used = $conn->query("SELECT 1 FROM ".$table." WHERE profile_id=".$profileId." LIMIT 1");
+            if (!$used) throw new RuntimeException($conn->error);
+            if ($used->num_rows) throw new RuntimeException('Este CGNAT ja foi utilizado no cruzamento. Use Arquivar para preservar o historico.');
+        }
+        if (!$conn->query("DELETE FROM cgnat_mappings WHERE profile_id=".$profileId)) throw new RuntimeException($conn->error);
+        if (!$conn->query("DELETE FROM cgnat_profiles WHERE id=".$profileId)) throw new RuntimeException($conn->error);
+        $conn->commit();
+    } catch (Exception $e) {
+        $conn->rollback();
+        throw $e;
     }
 }
 

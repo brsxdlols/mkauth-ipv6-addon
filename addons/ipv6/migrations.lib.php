@@ -79,6 +79,8 @@ function ipv6RunMigrations($conn)
             last_port int(11) NOT NULL,
             source varchar(20) NOT NULL DEFAULT 'generated',
             active tinyint(1) NOT NULL DEFAULT 0,
+            script_rsc mediumtext CHARACTER SET utf8mb4 DEFAULT NULL,
+            options_json mediumtext CHARACTER SET utf8mb4 DEFAULT NULL,
             deleted_at datetime DEFAULT NULL,
             created_at timestamp NOT NULL DEFAULT current_timestamp(),
             PRIMARY KEY (id),
@@ -135,6 +137,14 @@ function ipv6RunMigrations($conn)
     foreach ($queries as $sql) {
         if (!$conn->query($sql)) {
             throw new RuntimeException('Falha na instalacao automatica do banco: ' . $conn->error);
+        }
+    }
+
+    foreach (array('script_rsc', 'options_json') as $column) {
+        if (!ipv6ColumnExists($conn, 'cgnat_profiles', $column)) {
+            if (!$conn->query("ALTER TABLE cgnat_profiles ADD COLUMN ".$column." MEDIUMTEXT CHARACTER SET utf8mb4 DEFAULT NULL")) {
+                throw new RuntimeException('Falha ao preparar armazenamento do script CGNAT: '.$conn->error);
+            }
         }
     }
 
