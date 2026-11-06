@@ -11,7 +11,9 @@ $defaults=array('name'=>'','public'=>'','private_start'=>'','ratio'=>'32','ports
 $o=$defaults;
 foreach($o as $key=>$value){$o[$key]=isset($_POST[$key])?trim((string)$_POST[$key]):ipv6GetSetting($conn,'cgnat_'.$key,$value);}
 if($_SERVER['REQUEST_METHOD']!=='POST'){$o['public']='';$o['private_start']='';$o['name']='';$o['interface']='';$o['exception_list']='';$o['type']='netmap';$o['protocol']='tcp_udp';$o['interface_mode']='none';$o['blackhole']='0';}
-foreach(array('blackhole','fasttrack','nat_others','linked') as $check)$o[$check]=isset($_POST['generate'])?(isset($_POST[$check])?'1':'0'):$o[$check];
+foreach(array('blackhole','fasttrack','nat_others','linked') as $check){
+ if($_SERVER['REQUEST_METHOD']==='POST')$o[$check]=isset($_POST[$check])&&in_array((string)$_POST[$check],array('1','on'),true)?'1':'0';
+}
 $result=null;$error='';$message='';$mappingRows=array();$historyProfileId=(int)($_POST['history_profile_id']??0);
 if($_SERVER['REQUEST_METHOD']==='POST'){
  try{
@@ -26,6 +28,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
    header('Content-Type: application/pdf');header('Content-Disposition: attachment; filename="'.$filename.'"');echo cgnatBuildPdf($result,$o);exit;
   }
   if(isset($_POST['save_mapping'])){
+   if($o['linked']!=='1')throw new RuntimeException('Ative Vincular configuracao aos logs e gere novamente antes de ativar o cruzamento.');
    $activationMode=($_POST['activation_mode']??'today')==='retroactive'?'retroactive':'today';
    $effectiveDate=$activationMode==='retroactive'?trim((string)($_POST['effective_date']??'')):'';
    if($activationMode==='retroactive'&&$effectiveDate==='')throw new RuntimeException('Informe a data e hora em que o CGNAT foi ativado.');
@@ -36,7 +39,7 @@ if($_SERVER['REQUEST_METHOD']==='POST'){
    $historyProfileId=cgnatSaveProfile($conn,$result,$o,false);
    $message='Script gerado e salvo automaticamente no historico como CGNAT #'.$historyProfileId.'. O padrao atual nao foi alterado.';
   }
-  $mappingRows=cgnatMappingRows($result);
+  $mappingRows=cgnatMappingRows($result,0,100);
  }catch(Exception $e){$error=$e->getMessage();}
 }
 function h($v){return htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');}
@@ -46,6 +49,11 @@ function h($v){return htmlspecialchars((string)$v,ENT_QUOTES,'UTF-8');}
 <style>html{overflow-y:auto!important}body{overflow-y:visible!important;height:auto!important;min-height:100%!important}.container{overflow:visible!important;height:auto!important;max-height:none!important}.wrap{width:calc(100vw - 48px)!important}.activation-modal{display:none;position:fixed;z-index:99999;inset:0;background:rgba(15,23,42,.58);padding:20px;align-items:center;justify-content:center}.activation-modal.open{display:flex}.activation-dialog{position:relative;width:min(520px,100%);box-sizing:border-box;background:#fff;color:#19324d;border:1px solid #8bbbd5;border-radius:12px;padding:24px;box-shadow:0 24px 70px rgba(15,23,42,.35)}.activation-dialog h3{margin:0 34px 8px 0;color:#102a43}.activation-close{position:absolute;right:14px;top:10px;border:0;background:transparent;color:#526d82;font-size:30px;cursor:pointer}.activation-option{display:block;margin:14px 0;padding:12px;border:1px solid #bdd8ea;border-radius:8px;background:#f4faff;cursor:pointer}@media(max-width:900px){.wrap{width:calc(100vw - 20px)!important}}</style>
 <style>.activation-modal{position:fixed!important;z-index:2147483646!important;inset:0!important;width:100vw!important;height:100vh!important;box-sizing:border-box!important}.activation-modal.open{display:flex!important}.activation-dialog{position:relative!important;z-index:2147483647!important;display:block!important;width:min(520px,100%)!important;max-height:calc(100vh - 40px)!important;overflow-y:auto!important;background:#fff!important;color:#19324d!important}</style>
 <style id="cgnat-layout">
+.cgnat-page #mapping-pagination[hidden]{display:none}
+.cgnat-page #mapping-page{width:80px;padding:8px;border:1px solid #8bbbd5;border-radius:6px}
+.cgnat-page .mapping-actions .btn:disabled{opacity:.45;cursor:default}
+.cgnat-page #mapping-section,.cgnat-page #script-result{scroll-margin-top:70px}
+
 .cgnat-page .network-error{color:#a52727}
 .cgnat-page .field [aria-invalid="true"]{border-color:#c64141;background:#fffafa}
 
@@ -102,9 +110,19 @@ html.cgnat-page .cgnat-container>.wrap{position:static;left:auto;transform:none;
 
 </div><div class="checks"><label class="cgnat-switch"><span>Vincular configuracao aos logs</span><input class="cgnat-switch-input" type="checkbox" role="switch" name="linked" <?=$o['linked']==='1'?'checked':''?>></label><label class="cgnat-switch"><span>Criar blackhole</span><input class="cgnat-switch-input" type="checkbox" role="switch" name="blackhole" <?=$o['blackhole']==='1'?'checked':''?>></label><label class="cgnat-switch"><span>Incluir FastTrack</span><input class="cgnat-switch-input" type="checkbox" role="switch" name="fasttrack" <?=$o['fasttrack']==='1'?'checked':''?>></label><label class="cgnat-switch"><span>NAT para outros protocolos</span><input class="cgnat-switch-input" type="checkbox" role="switch" name="nat_others" <?=$o['nat_others']==='1'?'checked':''?>></label></div><p class="hint">FastTrack e opcional: pode interferir com Simple Queues, Queue Tree global, IPsec e algumas formas de monitoramento.</p></section>
 <button class="btn" style="margin-top:16px" name="generate" value="1">Gerar script CGNAT</button></form></section>
-<?php if($result):?><section id="script-result" class="card" style="margin-top:16px"><div class="summary"><div class="metric"><strong><?=$result['public_count']?></strong>IPs publicos</div><div class="metric"><strong><?=$result['private_count']?></strong>IPs privados<br><?=h($result['private_cidr'])?></div><div class="metric"><strong><?=$result['clients_per_public']?></strong>Clientes por IP</div><div class="metric"><strong><?=$result['ports']?></strong>Portas por cliente</div><div class="metric"><strong><?=$result['first_port']?>-<?=$result['last_port']?></strong>Faixa utilizada</div></div><textarea id="script" class="script" readonly><?=h($result['script'])?></textarea><div class="actions"><button class="btn" type="button" onclick="navigator.clipboard.writeText(document.getElementById('script').value)">Copiar script</button><form method="post" id="activation-form"><?php foreach($o as $key=>$value):?><input type="hidden" name="<?=h($key)?>" value="<?=h($value)?>"><?php endforeach;?><input type="hidden" name="generate" value="1"><input type="hidden" name="history_profile_id" value="<?=$historyProfileId?>"><input type="hidden" name="activation_mode" id="activation-mode" value="today"><input type="hidden" name="effective_date" id="activation-date" value=""><button class="btn download" name="download" value="1">Baixar .RSC</button><button class="btn download" name="download_pdf" value="1">Baixar PDF</button><button class="btn" type="button" onclick="openActivationModal()">Ativar cruzamento de portas</button></form></div></section>
+<?php if($result):?><section id="script-result" class="card" style="margin-top:16px"><div class="summary"><div class="metric"><strong><?=$result['public_count']?></strong>IPs publicos</div><div class="metric"><strong><?=$result['private_count']?></strong>IPs privados<br><?=h($result['private_cidr'])?></div><div class="metric"><strong><?=$result['clients_per_public']?></strong>Clientes por IP</div><div class="metric"><strong><?=$result['ports']?></strong>Portas por cliente</div><div class="metric"><strong><?=$result['first_port']?>-<?=$result['last_port']?></strong>Faixa utilizada</div></div><textarea id="script" class="script" readonly><?=h($result['script'])?></textarea><p class="hint">Opcoes deste script: Blackhole <?=$o['blackhole']==='1'?'ligado':'desligado'?> | FastTrack <?=$o['fasttrack']==='1'?'ligado':'desligado'?> | NAT para outros protocolos <?=$o['nat_others']==='1'?'ligado':'desligado'?>.</p><div class="actions"><button class="btn" type="button" onclick="navigator.clipboard.writeText(document.getElementById('script').value)">Copiar script</button><form method="post" id="activation-form"><?php foreach($o as $key=>$value):?><input type="hidden" name="<?=h($key)?>" value="<?=h($value)?>"><?php endforeach;?><input type="hidden" name="generate" value="1"><input type="hidden" name="history_profile_id" value="<?=$historyProfileId?>"><input type="hidden" name="activation_mode" id="activation-mode" value="today"><input type="hidden" name="effective_date" id="activation-date" value=""><button class="btn download" name="download" value="1">Baixar .RSC</button><button class="btn download" name="download_pdf" value="1">Baixar PDF</button><button class="btn" type="button" onclick="openActivationModal()" <?=$o['linked']==='1'?'':'disabled title="Ative Vincular configuracao aos logs e gere novamente."'?>>Ativar cruzamento de portas</button></form></div></section>
 <div id="activation-modal" class="activation-modal" role="dialog" aria-modal="true" aria-labelledby="activation-title"><div class="activation-dialog"><button type="button" class="activation-close" onclick="closeActivationModal()" aria-label="Fechar">&times;</button><h3 id="activation-title">Quando este CGNAT foi ativado?</h3><p>Escolha a data que sera usada para iniciar o cruzamento de IP privado, IP publico e portas.</p><label class="activation-option"><input type="radio" name="activation_choice" value="today" checked onchange="toggleActivationDate()"> Ativar hoje, a partir de agora</label><label class="activation-option"><input type="radio" name="activation_choice" value="retroactive" onchange="toggleActivationDate()"> Aplicar com data retroativa</label><div id="retroactive-field" class="field" style="display:none;margin-top:12px"><label for="retroactive-date">Data e hora de ativacao</label><input type="datetime-local" id="retroactive-date" max="<?=date('Y-m-d\TH:i')?>"></div><div class="actions"><button type="button" class="btn secondary" onclick="closeActivationModal()">Cancelar</button><button type="submit" class="btn" form="activation-form" name="save_mapping" value="1" onclick="return prepareActivation()">Confirmar e ativar</button></div></div></div>
-<section class="card mapping mapping-print"><div class="print-title">MAPEAMENTO DAS PORTAS</div><div class="print-meta"><?=h(strtoupper($o['name']))?> | <?=h($result['private_cidr'])?> &gt; <?=h($result['public_cidr'])?> | <?=date('d/m/Y H:i')?></div><div class="actions mapping-actions"><button class="btn secondary" type="button" onclick="window.print()">Imprimir / salvar pela pagina</button><button class="btn" type="button" onclick="navigator.clipboard.writeText(document.getElementById('mapping-copy').innerText)">Copiar tabela</button></div><table id="mapping-copy"><thead><tr><th>IP Publico</th><th>Range de Portas</th><th>IP Privado</th></tr></thead><tbody><?php foreach($mappingRows as $row):?><tr><td><?=h($row['public_ip'])?></td><td><?=$row['port_start']?> a <?=$row['port_end']?></td><td><?=h($row['private_ip'])?></td></tr><?php endforeach;?></tbody></table></section><?php endif;?>
+<section id="mapping-section" class="card mapping mapping-print"><div class="print-title">MAPEAMENTO DAS PORTAS</div><div class="print-meta"><?=h(strtoupper($o['name']))?> | <?=h($result['private_cidr'])?> &gt; <?=h($result['public_cidr'])?> | <?=date('d/m/Y H:i')?></div><div class="actions mapping-actions"><button class="btn secondary" type="submit" form="activation-form" name="download_pdf" value="1">PDF completo para impressao</button><button class="btn" id="copy-mapping" type="button">Copiar tabela completa</button></div><p class="hint">A pagina mostra ate 100 clientes por vez. O PDF e a copia incluem o mapeamento completo.</p>
+<div id="mapping-pagination" class="actions mapping-actions" hidden>
+<button class="btn secondary" type="button" id="mapping-first" aria-label="Primeira pagina">Primeira</button>
+<button class="btn secondary" type="button" id="mapping-prev">Anterior</button>
+<label for="mapping-page">Pagina</label><input id="mapping-page" type="number" min="1" value="1" aria-label="Numero da pagina">
+<button class="btn secondary" type="button" id="mapping-go">Ir</button>
+<button class="btn secondary" type="button" id="mapping-next">Proxima</button>
+<button class="btn secondary" type="button" id="mapping-last" aria-label="Ultima pagina">Ultima</button>
+<span id="mapping-count" role="status" aria-live="polite"></span>
+</div><p id="mapping-copy-status" class="hint" role="status" aria-live="polite"></p>
+<script type="application/json" id="mapping-data"><?=json_encode(array('public_count'=>$result['public_count'],'public_start'=>$result['public_start'],'private_start'=>cgnatIpToInt(explode('/',$result['private_cidr'])[0]),'private_count'=>$result['private_count'],'ranges'=>$result['ranges']),JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT)?></script><table id="mapping-copy"><thead><tr><th>IP Publico</th><th>Range de Portas</th><th>IP Privado</th></tr></thead><tbody><?php foreach($mappingRows as $row):?><tr><td><?=h($row['public_ip'])?></td><td><?=$row['port_start']?> a <?=$row['port_end']?></td><td><?=h($row['private_ip'])?></td></tr><?php endforeach;?></tbody></table></section><?php endif;?>
 </main></div><?php include('../../baixo.php'); ?><script src="../../menu.js.php"></script><?php if (is_file('../../rodape.php')) { include('../../rodape.php'); } ?><script>
 (function(){
 var interfaceMode=document.getElementById('interface-mode'),interfaceName=document.getElementById('interface-name');
@@ -174,6 +192,51 @@ function calculate(){
 calculate();
 var result=document.getElementById('script-result');
 if(result){window.requestAnimationFrame(function(){result.scrollIntoView({behavior:'smooth',block:'start'})})}
+})();
+(function(){
+var node=document.getElementById('mapping-data');
+if(!node)return;
+var data=JSON.parse(node.textContent),size=100,current=0,totalPages=Math.ceil(data.private_count/size);
+var body=document.querySelector('#mapping-copy tbody'),pageInput=document.getElementById('mapping-page');
+var status=document.getElementById('mapping-copy-status');
+function ip(number){return [Math.floor(number/16777216)%256,Math.floor(number/65536)%256,Math.floor(number/256)%256,number%256].join('.')}
+function row(index){var range=data.ranges[Math.floor(index/data.public_count)];return [ip(data.public_start+index%data.public_count),range[0]+' a '+range[1],ip(data.private_start+index)]}
+function render(page,scroll){
+ current=Math.max(0,Math.min(totalPages-1,page));
+ var start=current*size,end=Math.min(start+size,data.private_count),fragment=document.createDocumentFragment();
+ for(var i=start;i<end;i++){var tr=document.createElement('tr');row(i).forEach(function(value){var td=document.createElement('td');td.textContent=value;tr.appendChild(td)});fragment.appendChild(tr)}
+ body.replaceChildren(fragment);
+ pageInput.value=current+1;pageInput.max=totalPages;
+ document.getElementById('mapping-first').disabled=current===0;
+ document.getElementById('mapping-prev').disabled=current===0;
+ document.getElementById('mapping-next').disabled=current===totalPages-1;
+ document.getElementById('mapping-last').disabled=current===totalPages-1;
+ document.getElementById('mapping-count').textContent=(start+1).toLocaleString('pt-BR')+'–'+end.toLocaleString('pt-BR')+' de '+data.private_count.toLocaleString('pt-BR')+' clientes | '+totalPages+' paginas';
+ if(scroll)document.getElementById('mapping-section').scrollIntoView({block:'start',behavior:'auto'});
+}
+document.getElementById('mapping-first').addEventListener('click',function(){render(0,true)});
+document.getElementById('mapping-prev').addEventListener('click',function(){render(current-1,true)});
+document.getElementById('mapping-next').addEventListener('click',function(){render(current+1,true)});
+document.getElementById('mapping-last').addEventListener('click',function(){render(totalPages-1,true)});
+function go(){var page=Number(pageInput.value);if(!Number.isInteger(page)||page<1||page>totalPages){pageInput.value=current+1;return}render(page-1,true)}
+document.getElementById('mapping-go').addEventListener('click',go);
+pageInput.addEventListener('keydown',function(event){if(event.key==='Enter'){event.preventDefault();go()}});
+document.getElementById('copy-mapping').addEventListener('click',async function(){
+ var lines=['IP Publico\tRange de Portas\tIP Privado'];
+ for(var i=0;i<data.private_count;i++)lines.push(row(i).join('\t'));
+ var text=lines.join('\n');
+ try{
+  if(navigator.clipboard&&window.isSecureContext)await navigator.clipboard.writeText(text);
+  else{
+   var area=document.createElement('textarea');area.value=text;area.style.position='fixed';area.style.opacity='0';document.body.appendChild(area);
+   var copied=false;try{area.select();copied=document.execCommand('copy')}finally{area.remove()}
+   if(!copied)throw new Error('clipboard');
+  }
+  status.textContent='Tabela completa copiada: '+data.private_count.toLocaleString('pt-BR')+' clientes.';
+ }catch(error){status.textContent='Nao foi possivel copiar. Baixe o PDF com o mapeamento completo.'}
+});
+document.getElementById('mapping-pagination').hidden=false;
+render(0,false);
 })();
 function openActivationModal(){var modal=document.getElementById('activation-modal');if(!modal)return;if(modal.parentNode!==document.body)document.body.appendChild(modal);modal.classList.add('open');document.body.style.overflow='hidden';toggleActivationDate()}
 function closeActivationModal(){var modal=document.getElementById('activation-modal');if(modal)modal.classList.remove('open');document.body.style.overflow=''}

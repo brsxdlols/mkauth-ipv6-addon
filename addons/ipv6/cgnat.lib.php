@@ -150,10 +150,12 @@ function cgnatGenerate($o)
     );
 }
 
-function cgnatMappingRows($result)
+function cgnatMappingRows($result, $offset=0, $limit=null)
 {
     $rows = array();
-    for ($i=0; $i<$result['private_count']; $i++) {
+    $offset = max(0, min((int)$offset, $result['private_count']));
+    $end = $limit === null ? $result['private_count'] : min($result['private_count'], $offset + max(0, (int)$limit));
+    for ($i=$offset; $i<$end; $i++) {
         $group = intdiv($i, $result['public_count']);
         $rows[] = array(
             'public_ip'=>cgnatIntToIp($result['public_start'] + ($i % $result['public_count'])),
