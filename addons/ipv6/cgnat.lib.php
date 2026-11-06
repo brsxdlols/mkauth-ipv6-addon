@@ -280,6 +280,25 @@ function cgnatSaveProfile($conn, $result, $o, $activate=true)
     }
 }
 
+function cgnatVerifyCurrentUserPassword($conn, $password)
+{
+    if (empty($_SESSION['MKA_Logado']) || !isset($_SESSION['MKA_Usuario']) || !is_string($_SESSION['MKA_Usuario'])) return false;
+    if (!is_string($password) || $password === '' || strlen($password) > 4096) return false;
+    $login = $_SESSION['MKA_Usuario'];
+    $stmt = $conn->prepare("SELECT sha FROM sis_acesso WHERE login=? AND ativo='sim' LIMIT 1");
+    if (!$stmt) throw new RuntimeException('Nao foi possivel validar a senha do usuario logado.');
+    $stmt->bind_param('s', $login);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    if (!$row || !is_string($row['sha']) || $row['sha'] === '') return false;
+    /* O login nativo envia SHA-256 da senha e verifica o valor de sis_acesso.sha. */
+    $digest = hash('sha256', $password);
+    $stored = $row['sha'];
+    if (password_verify($digest, $stored)) return true;
+    return strlen($stored) === 64 && hash_equals($stored, $digest);
+}
+
 function cgnatDeleteTestProfile($conn, $profileId)
 {
     $profileId = (int)$profileId;
