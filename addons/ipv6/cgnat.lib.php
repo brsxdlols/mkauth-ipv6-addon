@@ -111,7 +111,6 @@ function cgnatGenerate($o)
     if (!empty($o['fasttrack'])) {
         $lines[] = '/ip firewall filter;';
         $fast='add action=fasttrack-connection chain=forward connection-state=established,related';
-        if (isset($o['routeros']) && $o['routeros'] === '7') $fast.=' hw-offload=yes';
         $lines[]=$fast.' comment="'.$comment.'-fasttrack";';
         $lines[]='add action=accept chain=forward connection-state=established,related comment="'.$comment.'-fasttrack";';
         $lines[]='';
