@@ -72,7 +72,8 @@ if (ipv6IsDelegated64($fixedPrefix)) {
 }
 
 if ($selectedPrefix === '') {
-    http_response_code(422);
+    // Ausencia de IPv6 nao e falha de transporte ou autenticacao.
+    http_response_code(200);
     die('SEM_IPV6');
 }
 

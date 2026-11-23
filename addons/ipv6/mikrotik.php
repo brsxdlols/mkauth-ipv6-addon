@@ -42,9 +42,12 @@ $onUp='{
         }
         :if (($ipv6 != "") && ($prefix != "")) do={ :set tentativas 8 } else={ :set tentativas ($tentativas + 1) }
     }
-    :if ($prefix = "") do={ :log warning ("IPv6 API: prefixo nao localizado no MikroTik; consultando cadastro do MK-Auth para " . $pppUser) }
+    :if ($prefix = "") do={ :log info ("IPv6 API: prefixo nao localizado no MikroTik; consultando cadastro do MK-Auth para " . $pppUser) }
     :local data ("ipv6=".$ipv6."&prefix=".$prefix."&user=".$pppUser."&ip=".$ipv4."&token=".$token)
-    :do { /tool fetch url=$url http-method=post http-header-field="Content-Type: application/x-www-form-urlencoded" http-data=$data keep-result=no } on-error={ :log error ("IPv6 API: erro ao enviar ".$pppUser) }
+    :do {
+        :local resposta [/tool fetch url=$url http-method=post http-header-field="Content-Type: application/x-www-form-urlencoded" http-data=$data output=user as-value]
+        :if (($resposta->"data") = "SEM_IPV6") do={ :log info ("IPv6 API: cliente sem prefixo IPv6 /64; registro ignorado: ".$pppUser) }
+    } on-error={ :log error ("IPv6 API: falha na requisicao ao MK-Auth para ".$pppUser."; verificar comunicacao, token e resposta HTTP") }
 }';
 $onDown='{
     :local url "'.$base.'/disconnect.php"
@@ -59,5 +62,18 @@ $onDown='{
 <?php ob_start(); include('../../topo.php'); echo ipv6CleanMkAuthDiagnostic(ob_get_clean()); ?><div class="container"><div class="v6-wrap"><h2>Scripts de coleta MikroTik</h2><div class="v6-nav"><a href="ipv6.php">Painel e logs</a><a class="active" href="mikrotik.php">Scripts MikroTik</a><a href="cgnat.php">CGNAT</a><a href="cgnat_history.php">Historico de CGNAT</a><a href="#" onclick="alert('Em constru&ccedil;&atilde;o');return false" aria-disabled="true">Importar mapeamento</a></div>
 <div class="v6-version"><strong>RouterOS:</strong> <a class="<?=($version==='6'?'active':'')?>" href="?version=6">Vers&atilde;o 6</a> <a class="<?=($version==='7'?'active':'')?>" href="?version=7">Vers&atilde;o 7</a></div><div class="v6-note">Cole no PPP Profile. O On Down novo envia token e permite desligar o modo legado depois da atualiza&ccedil;&atilde;o dos roteadores.</div>
 <div class="v6-grid"><div class="v6-card"><h3>On Up &mdash; RouterOS <?=$version?></h3><button class="v6-copy" onclick="copyScript('up',this)">Copiar On Up</button><textarea id="up" wrap="soft" readonly><?=htmlspecialchars($onUp,ENT_QUOTES,'UTF-8')?></textarea></div><div class="v6-card"><h3>On Down &mdash; RouterOS <?=$version?></h3><button class="v6-copy" onclick="copyScript('down',this)">Copiar On Down</button><textarea id="down" wrap="soft" readonly><?=htmlspecialchars($onDown,ENT_QUOTES,'UTF-8')?></textarea></div></div></div></div>
-<?php include('../../baixo.php'); ?><script src="../../menu.js.php"></script><?php if (is_file('../../rodape.php')) { include('../../rodape.php'); } ?><script>function copyScript(id,b){var e=document.getElementById(id);navigator.clipboard.writeText(e.value).then(function(){var x=b.textContent;b.textContent='Copiado!';setTimeout(function(){b.textContent=x},1500)})}</script></body></html>
+<?php include('../../baixo.php'); ?><script src="../../menu.js.php"></script><?php if (is_file('../../rodape.php')) { include('../../rodape.php'); } ?><script>async function copyScript(id,b){
+ var e=document.getElementById(id),original=b.textContent,ok=false;
+ if(window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText){
+  try{await navigator.clipboard.writeText(e.value);ok=true}catch(err){}
+ }
+ if(!ok){
+  var x=window.scrollX,y=window.scrollY;
+  e.focus({preventScroll:true});e.select();e.setSelectionRange(0,e.value.length);
+  try{ok=document.execCommand('copy')}catch(err){}
+  window.scrollTo(x,y);
+ }
+ if(ok){b.textContent='Copiado!';setTimeout(function(){b.textContent=original},1500)}
+ else{e.focus({preventScroll:true});e.select();e.setSelectionRange(0,e.value.length);alert('O navegador bloqueou a copia automatica. O script esta selecionado: pressione Ctrl+C para copiar.');}
+}</script></body></html>
 
