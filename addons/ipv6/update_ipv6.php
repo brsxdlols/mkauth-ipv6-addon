@@ -55,18 +55,20 @@ $fixed->fetch();
 $fixed->close();
 $fixedPrefix = trim((string)$fixedPrefix);
 
-function ipv6IsDelegated64($value) {
-    return (bool) preg_match('/^[0-9a-f:]+\/64$/i', trim((string)$value));
+function ipv6IsDelegatedPrefix($value) {
+    $parts = explode('/', trim((string)$value));
+    if (count($parts) !== 2 || !preg_match('/^(0|[1-9][0-9]{0,2})$/D', $parts[1]) || (int)$parts[1] > 128) {
+        return false;
+    }
+    return filter_var($parts[0], FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false;
 }
 
-if (ipv6IsDelegated64($fixedPrefix)) {
+if (ipv6IsDelegatedPrefix($fixedPrefix)) {
     $selectedPrefix = $fixedPrefix;
-} elseif (ipv6IsDelegated64($postedPrefix)) {
+} elseif (ipv6IsDelegatedPrefix($postedPrefix)) {
     $selectedPrefix = $postedPrefix;
-} elseif (ipv6IsDelegated64($radiusPrefix)) {
+} elseif (ipv6IsDelegatedPrefix($radiusPrefix)) {
     $selectedPrefix = trim((string)$radiusPrefix);
-} elseif (ipv6IsDelegated64($postedIpv6)) {
-    $selectedPrefix = $postedIpv6;
 } else {
     $selectedPrefix = '';
 }
@@ -120,3 +122,4 @@ if ($check->num_rows === 0) {
 $check->close();
 
 echo 'OK';
+
