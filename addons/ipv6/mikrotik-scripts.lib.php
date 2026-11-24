@@ -58,8 +58,9 @@ __ENCODER__
         :set attempt ($attempt+1)
         :if ($attempt=1) do={:delay 2s} else={:delay 5s}
         :local ifaceName ""
-        :do {:set ifaceName [/interface get $ifaceKey name]} on-error={:return}
-        :if ($ifaceName="") do={:return}
+        :do {:set ifaceName [/interface get $ifaceKey name]} on-error={:set ended true}
+        :if ([:len [:tostr $ifaceName]]=0) do={:set ended true}
+        :if (!$ended) do={
         :local prefixes ""
         :foreach srvId in=[/ipv6 dhcp-server find where interface=$ifaceName] do={
             :local srvName [/ipv6 dhcp-server get $srvId name]
@@ -101,6 +102,7 @@ __ENCODER__
             } on-error={:set requestFailed true}
         }
     }
+        }
     :if ((!$confirmed) && (!$ended)) do={
     :if ($pdSeen && $requestFailed) do={:log error ("IPv6 Log: PD identificado, mas envio Fetch sem confirmacao: ".$pppUser)} else={
     :if ($hasWanRecord) do={

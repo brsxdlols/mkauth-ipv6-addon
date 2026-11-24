@@ -144,7 +144,7 @@ if(isset($_GET['export'])){
     header('Content-Disposition: attachment; filename=ipv6.csv');
     @set_time_limit(0);
     $out=fopen('php://output','w');
-    fputcsv($out,['Usuario','IPv4','WAN IPv6 (RADIUS)','PD LAN registrado','IPv6 observado em','Inicio PPP','Fim PPP','NAS']);
+    fputcsv($out,['Usuario','IPv4','IPv6 / Remote','IPv6 / Delegation','IPv6 observado em','Inicio PPP','Fim PPP','NAS']);
     $exportSql=buildSQL($busca,$inicio,$fim,$modoResumo,$status,$publicIp,$publicPort).' ORDER BY r.radacctid DESC';
     $exportRows=$conn->query($exportSql,MYSQLI_USE_RESULT);
     if($exportRows)while($row=$exportRows->fetch_assoc()){
@@ -380,8 +380,8 @@ $historyStats = ipv6HistoryStats($conn, $retentionMonths);
 <tr>
 <th>Status</th>
 <th>Usu&aacute;rio</th>
-<th>IPv6 WAN / Framed</th>
-<th>PD / LAN registrado</th>
+<th>IPv6 / Remote</th>
+<th>IPv6 / Delegation</th>
 <th>IPv6 observado em</th>
 <th>IPv4</th>
 <th>IPv4 publico</th>
