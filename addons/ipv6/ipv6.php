@@ -289,7 +289,7 @@ $historyStats = ipv6HistoryStats($conn, $retentionMonths);
 .ipv6-panel h2{color:#102a43}.ipv6-panel th{background:#19324d;color:#fff}.ipv6-panel td{border-bottom-color:#d8e6ef;color:#19324d}.ipv6-panel tr:hover{background:#eaf6fd}.ipv6-panel input,.ipv6-panel select{background:#fff;color:#102a43;border:1px solid #8bbbd5;border-radius:6px}.ipv6-panel a{color:#1677a6}.ipv6-nav a{background:#e1f1fb!important;color:#173b57!important;border:1px solid #b8dcef!important;font-weight:600}.ipv6-nav a.active{background:#38a9dc!important;color:#fff!important}.ipv6-filters{background:#fff!important;border-color:#bdd8ea!important}.ipv6-config{background:#f4faff!important;border-color:#b8d8e9!important;color:#244761}.ipv6-muted{color:#486b82!important}
 </style>
 
-<style>.ipv6-panel td:nth-child(3),.ipv6-panel td:nth-child(4){max-width:240px;overflow-wrap:anywhere;word-break:break-word;white-space:normal}</style></head>
+<style>.ipv6-panel td:nth-child(3),.ipv6-panel td:nth-child(4){max-width:240px;overflow-wrap:anywhere;word-break:break-word;white-space:normal}.ipv6-no-collection{cursor:help;border-bottom:1px dotted currentColor}.ipv6-log-tooltip{position:fixed;z-index:2147483647;max-width:320px;padding:10px 12px;border-radius:6px;background:#19344d;color:#fff;font-size:13px;line-height:1.4;box-shadow:0 3px 12px #0004;pointer-events:none}.ipv6-log-tooltip[hidden]{display:none}</style></head>
 
 <body>
 
@@ -410,7 +410,7 @@ echo "<tr>
 <td>$rowStatus</td>
 <td>{$r['username']}</td>
 <td>".($wanCell?:'-')."</td>
-<td>".($pdCell?:'<span title="O addon ainda não registrou um prefixo delegado nesta sessão. Isso não confirma ausência de IPv6 no cliente.">Sem coleta</span>')."</td>
+<td>".($pdCell?:'<span class="ipv6-no-collection" tabindex="0" data-ipv6-tooltip="O addon ainda não registrou um prefixo delegado nesta sessão. Isso não confirma ausência de IPv6 no cliente.">Sem coleta</span>')."</td>
 <td>".($r['ipv6_observed_at']?:'-')."</td>
 <td>{$r['framedipaddress']}</td>
 <td>".($r['public_ip'] ?: '-')."</td>
@@ -470,9 +470,19 @@ Próxima ➡
 <script>(function(){
 var form=document.querySelector('.ipv6-filters'),body=document.getElementById('ipv6-results'),info=document.getElementById('live-search-info'),pager=document.getElementById('ipv6-pagination'),exportLink=document.getElementById('ipv6-export'),timer,controller;
 if(!form||!body)return;
+var tip=document.createElement('div'),tipOwner=null;
+tip.id='ipv6-collection-help';tip.className='ipv6-log-tooltip';tip.setAttribute('role','tooltip');tip.hidden=true;document.body.appendChild(tip);
+function hideTip(){if(tipOwner)tipOwner.removeAttribute('aria-describedby');tipOwner=null;tip.hidden=true}
+function showTip(el){hideTip();tipOwner=el;tip.textContent=el.getAttribute('data-ipv6-tooltip');tip.hidden=false;el.setAttribute('aria-describedby',tip.id);tip.style.maxWidth=Math.max(80,Math.min(320,window.innerWidth-40))+'px';var r=el.getBoundingClientRect(),box=tip.getBoundingClientRect();tip.style.left=Math.max(8,Math.min(r.left,window.innerWidth-box.width-8))+'px';tip.style.top=Math.max(8,r.bottom+8+box.height>window.innerHeight?r.top-box.height-8:r.bottom+8)+'px'}
+document.addEventListener('mouseover',function(e){var el=e.target.closest&&e.target.closest('[data-ipv6-tooltip]');if(el&&el!==tipOwner)showTip(el)});
+document.addEventListener('mouseout',function(e){if(tipOwner&&tipOwner.contains(e.target)&&!tipOwner.contains(e.relatedTarget))hideTip()});
+document.addEventListener('focusin',function(e){if(e.target.matches('[data-ipv6-tooltip]'))showTip(e.target)});
+document.addEventListener('focusout',hideTip);
+document.addEventListener('keydown',function(e){if(e.key==='Escape')hideTip()});
+window.addEventListener('scroll',hideTip,true);window.addEventListener('resize',hideTip);
 function esc(value){var e=document.createElement('div');e.textContent=value==null?'':value;return e.innerHTML}
 function cell(value){return '<td>'+esc(value||'-')+'</td>'}
-function pdCell(value){return value?cell(value):'<td><span title="O addon ainda não registrou um prefixo delegado nesta sessão. Isso não confirma ausência de IPv6 no cliente.">Sem coleta</span></td>'}
+function pdCell(value){return value?cell(value):'<td><span class="ipv6-no-collection" tabindex="0" data-ipv6-tooltip="O addon ainda não registrou um prefixo delegado nesta sessão. Isso não confirma ausência de IPv6 no cliente.">Sem coleta</span></td>'}
 function render(r){return '<tr><td><span class="'+(r.online?'online':'offline')+'">&#9679; '+(r.online?'Online':'Offline')+'</span></td>'+cell(r.username)+cell(r.wan_ipv6)+pdCell(r.pd_ipv6)+cell(r.ipv6_observed_at)+cell(r.framedipaddress)+cell(r.public_ip)+cell(r.port_start?r.port_start+'-'+r.port_end:'-')+cell(r.callingstationid)+cell(r.acctstarttime)+cell(r.acctstoptime)+cell(r.duration)+'<td><a href="?busca='+encodeURIComponent(r.username)+'">&#128269;</a></td></tr>'}
 function params(){return new URLSearchParams(new FormData(form))}
 function updateExport(){if(exportLink){var p=params();p.set('export','1');exportLink.href='?'+p.toString()}}
