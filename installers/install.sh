@@ -42,6 +42,7 @@ else
 fi
 
 php "$TARGET_DIR/install.php"
+php "$TARGET_DIR/install_fetch_log.php"
 
 if [ -f "$ADDON_MENU" ]; then
     cp -a "$ADDON_MENU" "$BACKUP_DIR/addon.js"
@@ -62,4 +63,5 @@ echo "Destino: $TARGET_DIR"
 echo "Backup anterior: $BACKUP_DIR"
 echo "Atalho: Conexoes > Painel IPv4/IPv6"
 exit 0
+
 

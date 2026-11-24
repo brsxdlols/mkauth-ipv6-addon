@@ -4,6 +4,7 @@ require_once __DIR__ . '/bootstrap.lib.php';
 require_once __DIR__ . '/migrations.lib.php';
 require_once __DIR__ . '/retention.lib.php';
 require_once __DIR__ . '/cgnat.lib.php';
+require_once __DIR__ . '/ipv6-log.lib.php';
 
 ipv6RequireMkAuthLogin();
 $Manifest = ipv6LoadAddonManifest();
@@ -14,6 +15,7 @@ $manifestVersion = $Manifest->{'version'} ?? '1.0';
 // ===== BANCO =====
 $conn = new mysqli("127.0.0.1","root","vertrigo","mkradius");
 ipv6RunMigrations($conn);
+ipv6LogSchema($conn);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['activate_cgnat'])) {
     $selected=array_map('intval',(array)($_POST['cgnat_profile_ids']??array()));
@@ -63,32 +65,14 @@ $offset = ($page - 1) * $limit;
 
 
 // ===== EXPORT CSV =====
-if(isset($_GET['export'])){
-
-    header('Content-Type: text/csv');
-    header('Content-Disposition: attachment; filename=ipv6.csv');
-
-    $out = fopen('php://output','w');
-
-    fputcsv($out, ['Usuario','IPv4','Inicio']);
-
-    $res = $conn->query("SELECT username, framedipaddress, acctstarttime FROM radacct ORDER BY radacctid DESC LIMIT 200");
-
-    while($r = $res->fetch_assoc()){
-        fputcsv($out, $r);
-    }
-
-    exit;
-}
-
 $busca  = $_GET['busca'] ?? '';
 $busca = $conn->real_escape_string($busca);
 $publicIpRaw = trim($_GET['public_ip'] ?? '');
 $publicPortRaw = trim($_GET['public_port'] ?? '');
 $publicIp = filter_var($publicIpRaw, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) ? $conn->real_escape_string($publicIpRaw) : '';
 $publicPort = ctype_digit($publicPortRaw) && (int)$publicPortRaw >= 1 && (int)$publicPortRaw <= 65535 ? (int)$publicPortRaw : 0;
-$inicio = $_GET['inicio'] ?? '';
-$fim    = $_GET['fim'] ?? '';
+$inicio = ipv6LogFilterDate($_GET['inicio'] ?? '');
+$fim    = ipv6LogFilterDate($_GET['fim'] ?? '');
 $status = in_array(($_GET['status'] ?? ''), array('online','offline'), true) ? $_GET['status'] : '';
 $page   = max(1, intval($_GET['page'] ?? 1));
 
@@ -102,35 +86,24 @@ $modoResumo = empty($busca) && empty($publicIp) && empty($publicPort) && empty($
 // ===== SQL =====
 function buildSQL($busca,$inicio,$fim,$modoResumo,$status='',$publicIp='',$publicPort=0){
 
-    $joinIPv6 = "
-    LEFT JOIN (
-        SELECT h1.*
-        FROM ipv6_history h1
-        INNER JOIN (
-            SELECT session_id, MAX(id) as max_id
-            FROM ipv6_history
-            GROUP BY session_id
-        ) h2 
-        ON h1.session_id = h2.session_id 
-        AND h1.id = h2.max_id
-    ) h ON h.session_id = r.acctsessionid
+    $joinIPv6 = ipv6LogHistoryJoin()."
     LEFT JOIN cgnat_mappings cm ON cm.private_ip=r.framedipaddress
       AND cm.profile_id=(CASE WHEN r.acctstoptime IS NULL THEN (SELECT p.id FROM cgnat_profiles p WHERE p.active=1 AND p.deleted_at IS NULL AND EXISTS (SELECT 1 FROM cgnat_mappings mx WHERE mx.profile_id=p.id AND mx.private_ip=r.framedipaddress) ORDER BY p.id DESC LIMIT 1) ELSE (SELECT v.profile_id FROM cgnat_profile_periods v WHERE v.superseded_at IS NULL AND v.started_at<r.acctstoptime AND (v.ended_at IS NULL OR v.ended_at>r.acctstarttime) AND EXISTS (SELECT 1 FROM cgnat_mappings mx WHERE mx.profile_id=v.profile_id AND mx.private_ip=r.framedipaddress) ORDER BY v.started_at DESC LIMIT 1) END)
     ";
 
     if($modoResumo){
         $sql = "
-        SELECT r.username,r.framedipaddress,r.acctstarttime,r.acctstoptime,h.ipv6,h.callingstationid,cm.public_ip,cm.port_start,cm.port_end
+        SELECT r.username,r.framedipaddress,r.acctstarttime,r.acctstoptime,h.ipv6,h.callingstationid,r.framedipv6address AS wan_native,h.wan_ipv6 AS wan_observed,h.delegated_prefix AS pd_observed,r.delegatedipv6prefix AS pd_native,h.radius_record_id,h.created_at AS ipv6_observed_at,r.nasipaddress,cm.public_ip,cm.port_start,cm.port_end
         FROM radacct r
         $joinIPv6
         WHERE r.radacctid IN (
             SELECT MAX(r2.radacctid)
             FROM radacct r2
-            GROUP BY r2.username
+            GROUP BY r2.nasipaddress,r2.username
         )";
     } else {
         $sql = "
-        SELECT r.username,r.framedipaddress,r.acctstarttime,r.acctstoptime,h.ipv6,h.callingstationid,cm.public_ip,cm.port_start,cm.port_end
+        SELECT r.username,r.framedipaddress,r.acctstarttime,r.acctstoptime,h.ipv6,h.callingstationid,r.framedipv6address AS wan_native,h.wan_ipv6 AS wan_observed,h.delegated_prefix AS pd_observed,r.delegatedipv6prefix AS pd_native,h.radius_record_id,h.created_at AS ipv6_observed_at,r.nasipaddress,cm.public_ip,cm.port_start,cm.port_end
         FROM radacct r
         $joinIPv6
         WHERE 1=1";
@@ -140,7 +113,7 @@ function buildSQL($busca,$inicio,$fim,$modoResumo,$status='',$publicIp='',$publi
         $sql .= " AND (
             r.username LIKE '%$busca%' OR
             r.framedipaddress LIKE '%$busca%' OR
-            h.ipv6 LIKE '%$busca%' OR
+            h.ipv6 LIKE '%$busca%' OR r.framedipv6address LIKE '%$busca%' OR r.delegatedipv6prefix LIKE '%$busca%' OR
             cm.public_ip LIKE '%$busca%'".((ctype_digit($busca)) ? " OR $busca BETWEEN cm.port_start AND cm.port_end" : "")."
         )";
     }
@@ -163,8 +136,26 @@ function buildSQL($busca,$inicio,$fim,$modoResumo,$status='',$publicIp='',$publi
 function calcDuracao($ini,$fim){
     if(!$ini) return "";
     $fim = $fim ?: date('Y-m-d H:i:s');
-    return gmdate("H:i:s", strtotime($fim) - strtotime($ini));
+    $seconds=max(0,strtotime($fim)-strtotime($ini));
+    return sprintf('%02d:%02d:%02d',floor($seconds/3600),floor(($seconds%3600)/60),$seconds%60);
 }
+if(isset($_GET['export'])){
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename=ipv6.csv');
+    @set_time_limit(0);
+    $out=fopen('php://output','w');
+    fputcsv($out,['Usuario','IPv4','WAN IPv6 (RADIUS)','PD LAN registrado','IPv6 observado em','Inicio PPP','Fim PPP','NAS']);
+    $exportSql=buildSQL($busca,$inicio,$fim,$modoResumo,$status,$publicIp,$publicPort).' ORDER BY r.radacctid DESC';
+    $exportRows=$conn->query($exportSql,MYSQLI_USE_RESULT);
+    if($exportRows)while($row=$exportRows->fetch_assoc()){
+        $wan=$row['wan_observed']?:$row['wan_native'];
+        $pd=$row['radius_record_id']?$row['pd_observed']:($row['pd_native']?:$row['ipv6']);
+        $login=$row['username'];if(preg_match('/^[=+@-]/',$login))$login="'".$login;
+        fputcsv($out,[$login,$row['framedipaddress'],$wan,$pd,$row['ipv6_observed_at'],$row['acctstarttime'],$row['acctstoptime'],$row['nasipaddress']]);
+    }
+    fclose($out);exit;
+}
+
 // TOTAL DE REGISTROS (para paginação)
 $totalRegistros = $conn->query("
     SELECT COUNT(*) t FROM radacct
@@ -190,28 +181,7 @@ $historyStats = ipv6HistoryStats($conn, $retentionMonths);
 
 <script src="../../scripts/jquery.js"></script>
 <script src="../../scripts/mk-auth.js"></script>
-<script>
-jQuery(function($){
-    var timer=null, $input=$('input[name="busca"]'), $status=$('select[name="status"]'), $limit=$('select[name="limit"]'), $body=$('#ipv6-results'), $form=$('.ipv6-filters'), $info=$('#live-search-info');
-    if(!$input.length||!$body.length)return;
-    /* Mantido apenas por compatibilidade de arquivo; o renderizador completo
-       no final da pagina inclui IPv4 publico e portas CGNAT. */
-    return;
-    function safe(value){return $('<div>').text(value==null?'':value).html();}
-    function searchNow(){
-        clearTimeout(timer); $info.text('Buscando...');
-        timer=setTimeout(function(){
-            $.ajax({url:'search.php',dataType:'json',cache:false,data:{q:$input.val(),status:$status.val(),limit:$limit.val()}})
-            .done(function(data){
-                if(!data||!$.isArray(data.rows)){ $info.text('Resposta invalida da busca.'); return; }
-                var html=''; $.each(data.rows,function(_,r){html+='<tr><td><span class="'+(r.online?'online':'offline')+'">&#9679; '+(r.online?'Online':'Offline')+'</span></td><td>'+safe(r.username)+'</td><td>'+safe(r.ipv6||'-')+'</td><td>'+safe(r.framedipaddress||'-')+'</td><td>'+safe(r.callingstationid||'-')+'</td><td>'+safe(r.acctstarttime||'')+'</td><td>'+safe(r.acctstoptime||'')+'</td><td>'+safe(r.duration)+'</td><td><a href="?busca='+encodeURIComponent(r.username)+'">&#128269;</a></td></tr>';});
-                $body.html(html||'<tr><td colspan="11">Nenhum registro encontrado.</td></tr>'); $info.text(data.count+' registro(s) exibido(s).');
-            }).fail(function(xhr){$info.text('Falha na busca (HTTP '+xhr.status+').');});
-        },250);
-    }
-    $input.on('input',searchNow); $status.on('change',searchNow); $limit.on('change',searchNow); $form.on('submit',function(e){e.preventDefault();searchNow();});
-});
-</script>
+
 
 <style>
 .ipv6-panel {
@@ -319,7 +289,7 @@ jQuery(function($){
 .ipv6-panel h2{color:#102a43}.ipv6-panel th{background:#19324d;color:#fff}.ipv6-panel td{border-bottom-color:#d8e6ef;color:#19324d}.ipv6-panel tr:hover{background:#eaf6fd}.ipv6-panel input,.ipv6-panel select{background:#fff;color:#102a43;border:1px solid #8bbbd5;border-radius:6px}.ipv6-panel a{color:#1677a6}.ipv6-nav a{background:#e1f1fb!important;color:#173b57!important;border:1px solid #b8dcef!important;font-weight:600}.ipv6-nav a.active{background:#38a9dc!important;color:#fff!important}.ipv6-filters{background:#fff!important;border-color:#bdd8ea!important}.ipv6-config{background:#f4faff!important;border-color:#b8d8e9!important;color:#244761}.ipv6-muted{color:#486b82!important}
 </style>
 
-</head>
+<style>.ipv6-panel td:nth-child(3),.ipv6-panel td:nth-child(4){max-width:240px;overflow-wrap:anywhere;word-break:break-word;white-space:normal}</style></head>
 
 <body>
 
@@ -399,18 +369,20 @@ jQuery(function($){
 <select name="status"><option value="">Todos status</option><option value="online" <?=($status==='online'?'selected':'')?>>Online</option><option value="offline" <?=($status==='offline'?'selected':'')?>>Offline</option></select>
 <input name="public_ip" inputmode="decimal" value="<?=htmlspecialchars($publicIpRaw,ENT_QUOTES,'ISO-8859-1')?>" placeholder="IP p&uacute;blico">
 <input name="public_port" inputmode="numeric" value="<?=htmlspecialchars($publicPortRaw,ENT_QUOTES,'ISO-8859-1')?>" placeholder="Porta">
-<input type="datetime-local" name="inicio" value="<?=$inicio?>">
-<input type="datetime-local" name="fim" value="<?=$fim?>">
+<input type="datetime-local" name="inicio" value="<?=str_replace(' ','T',$inicio)?>">
+<input type="datetime-local" name="fim" value="<?=str_replace(' ','T',$fim)?>">
 <button>Buscar</button>
 </form>
-<div style="margin-top:10px"><a href="?">Limpar filtros</a><a href="?export=1">Exportar CSV</a></div>
+<div style="margin-top:10px"><a href="?">Limpar filtros</a><a id="ipv6-export" href="?export=1">Exportar CSV</a></div>
 <div id="live-search-info" class="ipv6-muted" aria-live="polite">Digite para filtrar automaticamente.</div>
 
 <table>
 <tr>
 <th>Status</th>
 <th>Usu&aacute;rio</th>
-<th>IPv6</th>
+<th>IPv6 WAN / Framed</th>
+<th>PD / LAN registrado</th>
+<th>IPv6 observado em</th>
 <th>IPv4</th>
 <th>IPv4 publico</th>
 <th>Portas CGNAT</th>
@@ -427,14 +399,19 @@ $sql = buildSQL($busca,$inicio,$fim,$modoResumo,$status,$publicIp,$publicPort)."
 $res=$conn->query($sql);
 
 while($r=$res->fetch_assoc()){
-$status = $r['acctstoptime'] 
+foreach($r as $field=>$value)$r[$field]=htmlspecialchars((string)($value??''),ENT_QUOTES,'UTF-8');
+$wanCell=$r['wan_observed']?:$r['wan_native'];
+$pdCell=$r['radius_record_id']!==''?$r['pd_observed']:($r['pd_native']?:$r['ipv6']);
+$rowStatus = $r['acctstoptime'] 
     ? "<span class='offline'>&#9679; Offline</span>"
     : "<span class='online'>&#9679; Online</span>";
 
 echo "<tr>
-<td>$status</td>
+<td>$rowStatus</td>
 <td>{$r['username']}</td>
-<td>".($r['ipv6'] ?: '-')."</td>
+<td>".($wanCell?:'-')."</td>
+<td>".($pdCell?:'Nao observado')."</td>
+<td>".($r['ipv6_observed_at']?:'-')."</td>
 <td>{$r['framedipaddress']}</td>
 <td>".($r['public_ip'] ?: '-')."</td>
 <td>".($r['port_start'] ? $r['port_start'].'-'.$r['port_end'] : '-')."</td>
@@ -448,7 +425,7 @@ echo "<tr>
 ?>
 </tbody>
 </table>
-<div style="margin-top:20px;">
+<div id="ipv6-pagination" style="margin-top:20px;">
 
 <?php
 // BOTÃO "ANTERIOR"
@@ -486,29 +463,36 @@ Próxima ➡
 <script src="../../menu.js.php"></script>
 <?php if (is_file('../../rodape.php')) { include('../../rodape.php'); } ?>
 
-<script>
-(function(){
-var input=document.querySelector('input[name="busca"]'), status=document.querySelector('select[name="status"]'), limit=document.querySelector('select[name="limit"]'), body=document.getElementById('ipv6-results'), timer;
-/* Renderizador legado desativado: usava nove celulas e deslocava CGNAT/MAC. */
-return;
-if(!input||!body)return;
-function esc(v){var d=document.createElement('div');d.textContent=v==null?'':v;return d.innerHTML}
-function load(){clearTimeout(timer);timer=setTimeout(function(){var p=new URLSearchParams({q:input.value,status:status.value,limit:limit.value});fetch('search.php?'+p.toString(),{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(data){if(!data.rows)return;body.innerHTML=data.rows.map(function(r){return '<tr><td><span class="'+(r.online?'online':'offline')+'">&#9679; '+(r.online?'Online':'Offline')+'</span></td><td>'+esc(r.username)+'</td><td>'+esc(r.ipv6||'-')+'</td><td>'+esc(r.framedipaddress||'-')+'</td><td>'+esc(r.callingstationid||'-')+'</td><td>'+esc(r.acctstarttime||'')+'</td><td>'+esc(r.acctstoptime||'')+'</td><td>'+esc(r.duration)+'</td><td><a href="?busca='+encodeURIComponent(r.username)+'">&#128269;</a></td></tr>'}).join('')||'<tr><td colspan="9">Nenhum registro encontrado.</td></tr>'}).catch(function(){})},250)}
-input.addEventListener('input',load);status.addEventListener('change',load);limit.addEventListener('change',load);
-})();
-</script>
 
-<script>
-(function(){
-var input=document.querySelector('input[name="busca"]'),publicIp=document.querySelector('input[name="public_ip"]'),publicPort=document.querySelector('input[name="public_port"]'),status=document.querySelector('select[name="status"]'),limit=document.querySelector('select[name="limit"]'),body=document.getElementById('ipv6-results'),info=document.getElementById('live-search-info'),timer;
-if(!input||!body)return;
-function esc(v){var d=document.createElement('div');d.textContent=v==null?'':v;return d.innerHTML}
-function render(r){return '<tr><td><span class="'+(r.online?'online':'offline')+'">&#9679; '+(r.online?'Online':'Offline')+'</span></td><td>'+esc(r.username)+'</td><td>'+esc(r.ipv6||'-')+'</td><td>'+esc(r.framedipaddress||'-')+'</td><td>'+esc(r.public_ip||'-')+'</td><td>'+esc(r.port_start?(r.port_start+'-'+r.port_end):'-')+'</td><td>'+esc(r.callingstationid||'-')+'</td><td>'+esc(r.acctstarttime||'')+'</td><td>'+esc(r.acctstoptime||'')+'</td><td>'+esc(r.duration)+'</td><td><a href="?busca='+encodeURIComponent(r.username)+'">&#128269;</a></td></tr>'}
-function load(e){if(e){e.stopImmediatePropagation()}clearTimeout(timer);if(info)info.textContent='Buscando...';timer=setTimeout(function(){var p=new URLSearchParams({q:input.value,public_ip:publicIp.value,public_port:publicPort.value,status:status.value,limit:limit.value});fetch('search.php?'+p.toString(),{credentials:'same-origin'}).then(function(r){return r.json()}).then(function(data){var rows=data.rows||[];body.innerHTML=rows.map(render).join('')||'<tr><td colspan="11">Nenhum registro encontrado.</td></tr>';if(info)info.textContent=rows.length+' registro(s) exibido(s).'}).catch(function(){if(info)info.textContent='Falha na busca.'})},250)}
-input.addEventListener('input',load,true);publicIp.addEventListener('input',load,true);publicPort.addEventListener('input',load,true);status.addEventListener('change',load,true);limit.addEventListener('change',load,true);
-})();
-</script>
 
+
+
+<script>(function(){
+var form=document.querySelector('.ipv6-filters'),body=document.getElementById('ipv6-results'),info=document.getElementById('live-search-info'),pager=document.getElementById('ipv6-pagination'),exportLink=document.getElementById('ipv6-export'),timer,controller;
+if(!form||!body)return;
+function esc(value){var e=document.createElement('div');e.textContent=value==null?'':value;return e.innerHTML}
+function cell(value){return '<td>'+esc(value||'-')+'</td>'}
+function render(r){return '<tr><td><span class="'+(r.online?'online':'offline')+'">&#9679; '+(r.online?'Online':'Offline')+'</span></td>'+cell(r.username)+cell(r.wan_ipv6)+cell(r.pd_ipv6||'Nao observado')+cell(r.ipv6_observed_at)+cell(r.framedipaddress)+cell(r.public_ip)+cell(r.port_start?r.port_start+'-'+r.port_end:'-')+cell(r.callingstationid)+cell(r.acctstarttime)+cell(r.acctstoptime)+cell(r.duration)+'<td><a href="?busca='+encodeURIComponent(r.username)+'">&#128269;</a></td></tr>'}
+function params(){return new URLSearchParams(new FormData(form))}
+function updateExport(){if(exportLink){var p=params();p.set('export','1');exportLink.href='?'+p.toString()}}
+function load(){
+clearTimeout(timer);updateExport();info.textContent='Buscando...';
+timer=setTimeout(function(){
+if(controller)controller.abort();controller=new AbortController();
+var p=params(),api=new URLSearchParams(p);api.set('q',p.get('busca')||'');api.delete('busca');
+fetch('search.php?'+api.toString(),{credentials:'same-origin',signal:controller.signal}).then(function(r){if(!r.ok)throw Error('HTTP '+r.status);return r.json()}).then(function(data){
+if(!Array.isArray(data.rows))throw Error('Resposta invalida');
+body.innerHTML=data.rows.map(render).join('')||'<tr><td colspan="13">Nenhum registro encontrado.</td></tr>';
+info.textContent=data.rows.length+' registro(s) recente(s) exibido(s). Use Buscar para navegar pelos resultados.';
+if(pager)pager.style.display='none';
+p.set('page','1');history.replaceState(null,'','?'+p.toString());
+}).catch(function(e){if(e.name!=='AbortError')info.textContent='Falha na busca: '+e.message});
+},300)}
+form.querySelectorAll('input').forEach(function(e){e.addEventListener(e.type==='datetime-local'?'change':'input',load)});
+form.querySelectorAll('select').forEach(function(e){e.addEventListener('change',load)});
+updateExport();
+})();</script>
 </body>
 </html>
+
 

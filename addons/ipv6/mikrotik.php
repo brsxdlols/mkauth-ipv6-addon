@@ -11,60 +11,8 @@ $token=ipv6GetSetting($conn,'api_token','123456');
 $version=(($_GET['version']??'7')==='6')?'6':'7';
 $scheme=(!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off')?'https':'http';
 $base=$scheme.'://'.($_SERVER['HTTP_HOST']??'seu-dominio.com.br').'/admin/addons/ipv6';
-$onUp='{
-    :local url "'.$base.'/update_ipv6.php"
-    :local token "'.$token.'"
-    :local pppUser [:tostr $user]
-    :local ifaceId $interface
-    :local ifaceName [/interface get $ifaceId name]
-    :local ipv4 [:tostr $"remote-address"]
-    :local ipv6 ""
-    :local prefix ""
-    :local tentativas 0
-    :while ($tentativas < 8) do={
-        :delay 1500ms
-        :foreach i in=[/ipv6 address find where interface=$ifaceId] do={
-            :local addr [:tostr [/ipv6 address get $i address]]
-            :if (([:len $addr] > 0) && ([:pick $addr 0 4] != "fe80") && ([:pick $addr 0 4] != "fc00") && ([:pick $addr 0 2] != "fd")) do={ :set ipv6 $addr }
-        }
-        # Consulta apenas servidores associados a esta interface PPP.
-        :foreach srvId in=[/ipv6 dhcp-server find where interface=$ifaceName] do={
-            :local srvName [/ipv6 dhcp-server get $srvId name]
-            :foreach b in=[/ipv6 dhcp-server binding find where server=$srvName] do={
-                :if ([:tostr [/ipv6 dhcp-server binding get $b status]] = "bound") do={
-                    :local delegated [:tostr [/ipv6 dhcp-server binding get $b address]]
-                    :local slash [:find $delegated "/"]
-                    :if ([:typeof $slash] = "num") do={
-                        :local bits [:pick $delegated ($slash + 1) [:len $delegated]]
-                        :local bitsNum [:tonum $bits]
-                        :if (([:typeof $bitsNum] = "num") && ($bitsNum >= 0) && ($bitsNum <= 128) && ([:tostr $bitsNum] = $bits)) do={ :set prefix $delegated }
-                    }
-                }
-            }
-        }
-        :if (($ipv6 != "") && ($prefix != "")) do={ :set tentativas 8 } else={ :set tentativas ($tentativas + 1) }
-    }
-    :if ($prefix = "") do={ :log info ("IPv6 API: prefixo nao localizado no MikroTik; consultando cadastro do MK-Auth para " . $pppUser) }
-    :local data ("ipv6=".$ipv6."&prefix=".$prefix."&user=".$pppUser."&ip=".$ipv4."&token=".$token)
-    :do {
-        :local resposta [/tool fetch url=$url http-method=post http-header-field="Content-Type: application/x-www-form-urlencoded" http-data=$data output=user as-value idle-timeout=5s]
-        :if (($resposta->"data") = "SEM_IPV6") do={
-            :log warning ("IPv6 API: PD/LAN nao localizado; registro de delegacao ignorado. IPv6 WAN e independente: ".$pppUser)
-        } else={
-            :if (($resposta->"data") != "OK") do={ :log error ("IPv6 API: resposta inesperada; gravacao nao confirmada para ".$pppUser) }
-        }
-    } on-error={ :log error ("IPv6 API: requisicao de conexao falhou; gravacao nao confirmada para ".$pppUser."; consultar diagnostico do Fetch") }
-}';
-$onDown='{
-    :local url "'.$base.'/disconnect.php"
-    :local token "'.$token.'"
-    :local pppUser [:tostr $user]
-    :if ($pppUser = "") do={ :return }
-    :do {
-        :local resposta [/tool fetch url=($url."?user=".$pppUser."&token=".$token) http-method=get output=user as-value idle-timeout=5s]
-        :if (($resposta->"data") != "OK") do={ :log error ("IPv6 API: resposta inesperada; desconexao nao confirmada para ".$pppUser) }
-    } on-error={ :log error ("IPv6 API: requisicao de desconexao falhou; encerramento nao confirmado para ".$pppUser."; consultar diagnostico do Fetch") }
-}';
+require_once __DIR__.'/mikrotik-scripts.lib.php';
+list($onUp,$onDown)=ipv6FetchScripts($base,$token);
 ?>
 <!DOCTYPE html><html lang="pt-BR" class="has-navbar-fixed-top"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link href="../../estilos/mk-auth.css" rel="stylesheet"><link href="../../estilos/font-awesome.css" rel="stylesheet"><link href="addon-theme.css?v=20260809" rel="stylesheet"><script src="../../scripts/jquery.js"></script><script src="../../scripts/mk-auth.js"></script>
 <style>html{overflow-x:clip;overflow-y:auto}body{overflow:visible;height:auto;max-height:none}.v6-wrap{position:relative;left:50%;transform:translateX(-50%);width:calc(100vw - 32px);max-width:1800px;box-sizing:border-box;margin:20px 0;background:#f8fbff;color:#19324d;padding:20px;border:1px solid #bfdbef;border-radius:12px;box-shadow:0 8px 24px rgba(15,23,42,.08)}.v6-wrap h2,.v6-wrap h3{color:#102a43}.v6-nav{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0 22px}.v6-nav a,.v6-version a{padding:10px 14px;border-radius:7px;background:#e1f1fb;color:#173b57;text-decoration:none;border:1px solid #b8dcef;font-weight:600}.v6-nav a.active,.v6-version a.active{background:#38a9dc;color:#fff}.v6-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;margin-top:12px}.v6-card{background:#fff;border:1px solid #bdd8ea;border-radius:10px;padding:14px;min-width:0;overflow:hidden}.v6-card textarea{display:block;width:100%;height:auto;min-height:180px;max-width:100%;resize:vertical;background:#0c1830;color:#d1fae5;border:1px solid #456078;border-radius:7px;padding:12px;font:12px monospace;box-sizing:border-box;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;overflow-x:hidden;overflow-y:hidden}.v6-copy{background:#18a86b;color:#fff;border:0;border-radius:6px;padding:9px 14px;cursor:pointer}.v6-note{background:#fff7dc;color:#6b4b00;border:1px solid #e9c75d;padding:12px;border-radius:7px;margin:14px 0}@media(max-width:850px){.v6-wrap{width:calc(100vw - 20px);padding:12px}.v6-grid{grid-template-columns:1fr}}</style><style>.v6-card .v6-copy{display:inline-flex;margin:8px 0 14px}.v6-card textarea{display:block}.v6-version{margin-bottom:12px}</style></head><body>
@@ -83,7 +31,7 @@ function updateDownScript(showError){
  e.value=e.defaultValue;
  if(enabled&&valid){
   var rule='    :do { /ipv6 firewall address-list remove [find where list='+routerQuote(value)+' comment=$pppUser] } on-error={ :log warning ("IPv6 API: limpeza da address-list nao confirmada para ".$pppUser) }\n';
-  e.value=e.value.replace('    :do {',rule+'    :do {');
+  e.value=e.value.replace('    # IPV6_LOG_OPTIONAL_CLEANUP',rule+'    # IPV6_LOG_OPTIONAL_CLEANUP');
  }
  if(!valid&&showError){name.reportValidity();name.focus();}
  fitScripts();return valid;
@@ -104,5 +52,6 @@ async function copyScript(id,b){
  if(ok){b.textContent='Copiado!';setTimeout(function(){b.textContent=original},1500)}
  else{e.focus({preventScroll:true});e.select();e.setSelectionRange(0,e.value.length);alert('O navegador bloqueou a copia automatica. O script esta selecionado: pressione Ctrl+C para copiar.');}
 }</script></body></html>
+
 
 

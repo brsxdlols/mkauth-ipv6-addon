@@ -1,125 +1,33 @@
 <?php
 header('Content-Type: text/plain; charset=utf-8');
-require_once __DIR__ . '/retention.lib.php';
-require_once __DIR__ . '/migrations.lib.php';
-
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    http_response_code(403);
-    die('Acesso negado');
+mysqli_report(MYSQLI_REPORT_OFF);
+require_once __DIR__.'/ipv6-log.lib.php';
+if(($_SERVER['REQUEST_METHOD']??'')!=='POST'){http_response_code(403);exit('Acesso negado');}
+foreach(['token','user','ip','ipv6','prefix','prefixes','nas','v','radius_id'] as $field)if(isset($_POST[$field])&&!is_string($_POST[$field])){http_response_code(400);exit('Dados invalidos');}
+$db=new mysqli('127.0.0.1','root','vertrigo','mkradius');
+if($db->connect_errno){http_response_code(503);exit('Banco indisponivel');}
+$db->set_charset('utf8mb4');
+$r=$db->query("SELECT value FROM ipv6_settings WHERE name='api_token'");$setting=$r?$r->fetch_assoc():null;$expected=(string)($setting['value']??'');
+if($expected===''||!hash_equals($expected,(string)($_POST['token']??''))){http_response_code(403);exit('Token invalido');}
+$user=trim($_POST['user']??'');$ip=trim($_POST['ip']??'');$nas=trim($_POST['nas']??'');
+$radiusId=0;
+if(($_POST['radius_id']??'')!==''){
+    $radiusId=filter_var($_POST['radius_id'],FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
+    if($radiusId===false){http_response_code(400);exit('Sessao invalida');}
 }
-
-$conn = new mysqli('127.0.0.1', 'root', 'vertrigo', 'mkradius');
-ipv6RunMigrations($conn);
-$expectedToken = ipv6GetSetting($conn, 'api_token', '');
-ipv6RunMonthlyCleanupIfDue($conn);
-
-$token = $_POST['token'] ?? '';
-$user = trim($_POST['user'] ?? '');
-$ip = trim($_POST['ip'] ?? '');
-$postedPrefix = trim($_POST['prefix'] ?? '');
-$postedIpv6 = trim($_POST['ipv6'] ?? '');
-
-if (!hash_equals((string)$expectedToken, (string)$token)) {
-    http_response_code(403);
-    die('Token invalido');
+if($user===''||strlen($user)>100||!filter_var($ip,FILTER_VALIDATE_IP,FILTER_FLAG_IPV4)||($nas!==''&&!filter_var($nas,FILTER_VALIDATE_IP))){http_response_code(400);exit('Dados invalidos');}
+$raw=trim($_POST['prefixes']??($_POST['prefix']??''));
+if(strlen($raw)>8192){http_response_code(400);exit('Lista de prefixos excede o limite');}
+$prefixes=$raw===''?[]:array_map('trim',explode(',',$raw));
+if(count($prefixes)>32){http_response_code(400);exit('Muitos prefixos');}
+foreach($prefixes as $prefix)if(!ipv6LogValid($prefix,true)){http_response_code(400);exit('Prefixo IPv6 invalido');}
+try{
+    $radius=ipv6LogRadius($db,$user,$ip,$nas,$radiusId);
+    if(!$radius)exit(($_POST['v']??'')==='2'?($radiusId?'SESSION_ENDED':'RADIUS_PENDING'):'SEM_IPV6');
+    $reply=ipv6LogStore($db,$radius,$prefixes,trim($_POST['ipv6']??''));
+    if(($_POST['v']??'')==='2')echo $reply.'|'.$radius['radacctid'];
+    else echo $reply==='OK_WAN'?'SEM_IPV6':$reply;
+}catch(Throwable $e){
+    http_response_code($e->getMessage()==='SESSAO_AMBIGUA'?409:500);
+    echo $e->getMessage()==='SESSAO_AMBIGUA'?'Sessao ambigua':'Falha ao registrar IPv6';
 }
-if ($user === '' || $ip === '') {
-    http_response_code(400);
-    die('Dados invalidos');
-}
-
-$stmt = $conn->prepare("
-SELECT acctsessionid, callingstationid, delegatedipv6prefix
-FROM radacct
-WHERE username=? AND acctstoptime IS NULL
-ORDER BY radacctid DESC
-LIMIT 1
-");
-$stmt->bind_param('s', $user);
-$stmt->execute();
-$stmt->bind_result($session, $mac, $radiusPrefix);
-if (!$stmt->fetch()) {
-    $session = 'SEM_SESSAO';
-    $mac = '';
-    $radiusPrefix = '';
-}
-$stmt->close();
-
-// MK-Auth fixed PD takes precedence. Dynamic installations keep using MikroTik.
-$fixedPrefix = '';
-$fixed = $conn->prepare("SELECT pool6 FROM sis_cliente WHERE login=? LIMIT 1");
-$fixed->bind_param('s', $user);
-$fixed->execute();
-$fixed->bind_result($fixedPrefix);
-$fixed->fetch();
-$fixed->close();
-$fixedPrefix = trim((string)$fixedPrefix);
-
-function ipv6IsDelegatedPrefix($value) {
-    $parts = explode('/', trim((string)$value));
-    if (count($parts) !== 2 || !preg_match('/^(0|[1-9][0-9]{0,2})$/D', $parts[1]) || (int)$parts[1] > 128) {
-        return false;
-    }
-    return filter_var($parts[0], FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false;
-}
-
-if (ipv6IsDelegatedPrefix($fixedPrefix)) {
-    $selectedPrefix = $fixedPrefix;
-} elseif (ipv6IsDelegatedPrefix($postedPrefix)) {
-    $selectedPrefix = $postedPrefix;
-} elseif (ipv6IsDelegatedPrefix($radiusPrefix)) {
-    $selectedPrefix = trim((string)$radiusPrefix);
-} else {
-    $selectedPrefix = '';
-}
-
-if ($selectedPrefix === '') {
-    // Ausencia de IPv6 nao e falha de transporte ou autenticacao.
-    http_response_code(200);
-    die('SEM_IPV6');
-}
-
-if ($session !== 'SEM_SESSAO') {
-    $update = $conn->prepare("
-    UPDATE radacct
-    SET delegatedipv6prefix=?, ipv6_script=?
-    WHERE acctsessionid=?
-    ");
-    $update->bind_param('sss', $selectedPrefix, $selectedPrefix, $session);
-    $update->execute();
-    $update->close();
-}
-
-$check = $conn->prepare("
-SELECT id
-FROM ipv6_history
-WHERE session_id=? AND ended_at IS NULL
-LIMIT 1
-");
-$check->bind_param('s', $session);
-$check->execute();
-$check->store_result();
-
-if ($check->num_rows === 0) {
-    $insert = $conn->prepare("
-    INSERT INTO ipv6_history
-    (username,ipv6,session_id,framedipaddress,callingstationid)
-    VALUES (?,?,?,?,?)
-    ");
-    $insert->bind_param('sssss', $user, $selectedPrefix, $session, $ip, $mac);
-    $insert->execute();
-    $insert->close();
-} else {
-    $updateHistory = $conn->prepare("
-    UPDATE ipv6_history
-    SET ipv6=?, framedipaddress=?, callingstationid=?
-    WHERE session_id=? AND ended_at IS NULL
-    ");
-    $updateHistory->bind_param('ssss', $selectedPrefix, $ip, $mac, $session);
-    $updateHistory->execute();
-    $updateHistory->close();
-}
-$check->close();
-
-echo 'OK';
-
