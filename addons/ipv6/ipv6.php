@@ -410,7 +410,7 @@ echo "<tr>
 <td>$rowStatus</td>
 <td>{$r['username']}</td>
 <td>".($wanCell?:'-')."</td>
-<td>".($pdCell?:'Nao observado')."</td>
+<td>".($pdCell?:'<span title="O addon ainda não registrou um prefixo delegado nesta sessão. Isso não confirma ausência de IPv6 no cliente.">Sem coleta</span>')."</td>
 <td>".($r['ipv6_observed_at']?:'-')."</td>
 <td>{$r['framedipaddress']}</td>
 <td>".($r['public_ip'] ?: '-')."</td>
@@ -472,7 +472,8 @@ var form=document.querySelector('.ipv6-filters'),body=document.getElementById('i
 if(!form||!body)return;
 function esc(value){var e=document.createElement('div');e.textContent=value==null?'':value;return e.innerHTML}
 function cell(value){return '<td>'+esc(value||'-')+'</td>'}
-function render(r){return '<tr><td><span class="'+(r.online?'online':'offline')+'">&#9679; '+(r.online?'Online':'Offline')+'</span></td>'+cell(r.username)+cell(r.wan_ipv6)+cell(r.pd_ipv6||'Nao observado')+cell(r.ipv6_observed_at)+cell(r.framedipaddress)+cell(r.public_ip)+cell(r.port_start?r.port_start+'-'+r.port_end:'-')+cell(r.callingstationid)+cell(r.acctstarttime)+cell(r.acctstoptime)+cell(r.duration)+'<td><a href="?busca='+encodeURIComponent(r.username)+'">&#128269;</a></td></tr>'}
+function pdCell(value){return value?cell(value):'<td><span title="O addon ainda não registrou um prefixo delegado nesta sessão. Isso não confirma ausência de IPv6 no cliente.">Sem coleta</span></td>'}
+function render(r){return '<tr><td><span class="'+(r.online?'online':'offline')+'">&#9679; '+(r.online?'Online':'Offline')+'</span></td>'+cell(r.username)+cell(r.wan_ipv6)+pdCell(r.pd_ipv6)+cell(r.ipv6_observed_at)+cell(r.framedipaddress)+cell(r.public_ip)+cell(r.port_start?r.port_start+'-'+r.port_end:'-')+cell(r.callingstationid)+cell(r.acctstarttime)+cell(r.acctstoptime)+cell(r.duration)+'<td><a href="?busca='+encodeURIComponent(r.username)+'">&#128269;</a></td></tr>'}
 function params(){return new URLSearchParams(new FormData(form))}
 function updateExport(){if(exportLink){var p=params();p.set('export','1');exportLink.href='?'+p.toString()}}
 function load(){
