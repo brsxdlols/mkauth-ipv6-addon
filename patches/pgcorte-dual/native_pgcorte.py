@@ -13,7 +13,7 @@ import sys
 import uuid
 from patch import atomic_write, locked, PatchError, save_json
 
-ROOT = Path('/usr/local/share/mkauth-pgcorte-dual/v1.1.0')
+ROOT = Path('/usr/local/share/mkauth-pgcorte-dual/v1.1.1')
 BACKUPS = Path('/var/backups/mkauth-pgcorte-native')
 TARGET = Path('/opt/mk-auth/mkt/.user.ini')
 NATIVE = Path('/opt/mk-auth/mkt/pgcorte.hhvm')
@@ -23,6 +23,10 @@ END = '; END MKAUTH_PGCORTE_DUAL_NATIVE'
 
 def ini_block():
     return (BEGIN+'\nauto_prepend_file = "'+str(ROOT/'native_hook.php')+'"\n'+END+'\n').encode()
+
+
+def previous_ini_block():
+    return (BEGIN+'\nauto_prepend_file = "/usr/local/share/mkauth-pgcorte-dual/v1.1.0/native_hook.php"\n'+END+'\n').encode()
 
 
 def sha(data):
@@ -55,10 +59,11 @@ def execute(action, backup=None):
     data = TARGET.read_bytes() if exists else b''
     block = ini_block()
     installed = block in data
-    if b'MKAUTH_PGCORTE_DUAL_NATIVE' in data and not installed:
+    upgrading = previous_ini_block() in data
+    if b'MKAUTH_PGCORTE_DUAL_NATIVE' in data and not installed and not upgrading:
         raise PatchError('Configuracao propria divergente; revise antes de atualizar.')
     active_prepend = re.findall(rb'(?m)^\s*auto_prepend_file\s*=', data)
-    if active_prepend and (not installed or len(active_prepend) != 1):
+    if active_prepend and ((not installed and not upgrading) or len(active_prepend) != 1):
         raise PatchError('auto_prepend_file personalizado encontrado; configuracao preservada.')
     package = Path(__file__).resolve().parent
     files = {name: (package/name).read_bytes() for name in ('native_hook.php', 'pgcorte_dual.rsc')}
@@ -112,7 +117,7 @@ def execute(action, backup=None):
     original = folder/'original.ini'
     original.write_bytes(data)
     original.chmod(0o600)
-    patched = data+(b'\n' if data and not data.endswith(b'\n') else b'')+block
+    patched = data.replace(previous_ini_block(), block) if upgrading else data+(b'\n' if data and not data.endswith(b'\n') else b'')+block
     save_json(folder/'manifest.json', {'before_sha256': sha(data), 'after_sha256': sha(patched), 'target': str(TARGET), 'before_existed': exists})
     atomic_write(TARGET, patched, TARGET.stat() if exists else NATIVE.stat())
     return {'status': 'installed', 'target': str(TARGET), 'backup': str(folder), 'native_authorization_preserved': True, 'php_user_ini_cache_seconds': 300}, 0

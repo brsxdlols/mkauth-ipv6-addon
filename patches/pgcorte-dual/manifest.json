@@ -1,6 +1,6 @@
 {
   "id": "mkauth-pgcorte-dual",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "entrypoint": "install.sh",
   "diagnostic": "python3 patch.py check",
   "configuration_file": "/etc/freeradius/3.0/mods-config/sql/main/mysql/queries.conf",
@@ -12,7 +12,7 @@
   "mikrotik_access": false,
   "scope": "IPv4 ausente para principais e adicionais bloqueados, e identificacao IPv6 no PGCORTE nativo",
   "tested_stack": "MK-Auth 26.03, FreeRADIUS 3, MySQL/MariaDB, PHP 8.0, Python 3.7+",
-  "python_tests": 15,
+  "python_tests": 16,
   "mysql_scenarios": 19,
   "reapply_after_native_configuration_regeneration": true,
   "native_endpoint": "/mkt/pgcorte",

@@ -1,4 +1,4 @@
-# MK-Auth PGCORTE dual — 1.1.0
+# MK-Auth PGCORTE dual — 1.1.1
 
 Inclui o reparo IPv4 RADIUS para clientes principais **e logins adicionais**, e integra o complemento IPv6 na resposta nativa `/mkt/pgcorte`. O provedor continua copiando PGCORTE em **Provedor → Ramais → Detalhes** e colando na CCR. A tela, as chaves e o caminho do Fetch nativo permanecem iguais. Instalacoes existentes recebem o complemento no proximo Fetch/import bem-sucedido.
 
@@ -24,7 +24,7 @@ O pacote confere SHA256SUMS, PHP e schema RADIUS. O FreeRADIUS reinicia apenas q
 
 Recusa sobrescrever um auto_prepend_file personalizado existente. Exige PHP-FPM/CGI com `.user.ini` habilitado; Apache mod_php nao utiliza essa configuracao. Validado em MK-Auth 26.03/PHP-FPM 8.0.30 e RouterOS 7.24.7. RouterOS 6 requer validacao especifica antes da distribuicao geral.
 
-Helpers: `/usr/local/share/mkauth-pgcorte-dual/v1.1.0/`. Nao apague esses arquivos enquanto o auto_prepend estiver configurado ou no cache do PHP. Backups privados: `/var/backups/mkauth-pgcorte-native/`. O JSON informa o diretorio exato.
+Helpers: `/usr/local/share/mkauth-pgcorte-dual/v1.1.1/`. Nao apague esses arquivos enquanto o auto_prepend estiver configurado ou no cache do PHP. Backups privados: `/var/backups/mkauth-pgcorte-native/`. O JSON informa o diretorio exato.
 
 ```sh
 python3 native_pgcorte.py rollback --backup /var/backups/mkauth-pgcorte-native/DIRETORIO
@@ -37,10 +37,12 @@ Evite agendar um segundo identificador dual em paralelo com o leitor nativo. Est
 
 ## Validacao e limites
 
-Passou em 15 testes Python (incluindo migracao, idempotencia, rollback e preservacao de configuracao personalizada), 19 cenarios SQL em banco isolado e nove casos do filtro PHP. A validacao normal de instalacao usa EXPLAIN: nao grava clientes, senhas, contratos ou historico no banco.
+Passou em 16 testes Python (incluindo migracao, idempotencia, rollback e preservacao de configuracao personalizada), 19 cenarios SQL em banco isolado e nove casos do filtro PHP. A validacao normal de instalacao usa EXPLAIN: nao grava clientes, senhas, contratos ou historico no banco.
 
 A consulta so completa Framed-IP-Address ausente; nao corrige cadastro sem IPv4 valido nem substitui um atributo existente. Confere formato canonico e exclui 0.0.0.0 e broadcast. Nao altera check de autenticacao, accounting, velocidades ou atributos IPv6. Duplicidade de entradas estaticas/dinamicas na address-list e timeouts RADIUS sao problemas separados.
 
 O instalador verifica e preserva a configuracao SQL reconhecida. Se encontrar consulta personalizada ou arquivo modificado por terceiros, recusa sobrescrever. Backups do RADIUS ficam em `/var/backups/mkauth-radius-pgcorte/`, privados, com hashes. Uma falha de validacao/ativacao tenta restaurar automaticamente a configuracao anterior. O retorno 4 do componente RADIUS indica ativacao pendente; nao trate como instalacao concluida.
 
 Para testar novamente sem usar dados de clientes reais: `python3 -m unittest discover -s tests -v` e `php tests/test_native_hook.php`. O teste MySQL e separado, recebe a configuracao via stdin, cria apenas seu proprio banco temporario e o remove ao terminar; nao e executado automaticamente pelo instalador.
+
+A versao 1.1.1 corrige a saida da protecao contra execucoes simultaneas no RouterOS (`:return 0`). Reconhece a configuracao nativa da 1.1.0 e migra com backup, sem sobrescrever auto_prepend personalizado.

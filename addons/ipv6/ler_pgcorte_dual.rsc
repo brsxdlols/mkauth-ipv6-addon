@@ -1,6 +1,6 @@
 {
     # Comentarios locais. Nao cria nem remove entradas; RADIUS controla o bloqueio.
-    :if ([:len [/system script job find where script=[:jobname]]]>1) do={:return}
+    :if ([:len [/system script job find where script=[:jobname]]]>1) do={:return 0}
     :local users [:toarray ""]
     :local ipv4Users [:toarray ""]
     :local prefixUsers [:toarray ""]

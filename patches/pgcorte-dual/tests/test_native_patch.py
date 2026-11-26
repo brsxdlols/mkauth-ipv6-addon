@@ -62,5 +62,18 @@ class NativePatchTests(unittest.TestCase):
                 with self.assertRaises(native.PatchError):native.execute('apply')
                 self.assertEqual(target.read_bytes(),original)
 
+    def test_upgrade_known_native_110_and_rollback(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base=Path(temp);target=base/'.user.ini';protected=base/'pgcorte.hhvm'
+            protected.write_bytes(b'<?php echo "fixture";')
+            original=native.previous_ini_block()
+            target.write_bytes(original)
+            with patch.object(native,'ROOT',base/'helper'/'v1.1.1'), patch.object(native,'TARGET',target), patch.object(native,'NATIVE',protected), patch.object(native,'BACKUPS',base/'backups'):
+                result,_=native.execute('apply')
+                self.assertEqual(target.read_bytes(),native.ini_block())
+                self.assertEqual(native.execute('check')[1],0)
+                native.execute('rollback',result['backup'])
+                self.assertEqual(target.read_bytes(),original)
+
 
 if __name__=='__main__':unittest.main()
