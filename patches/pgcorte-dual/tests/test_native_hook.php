@@ -28,5 +28,17 @@ $fullInstaller=file_get_contents(__DIR__.'/../instalar_pgcorte_dual.rsc');
 $fullPanel=mkauthPgcorteDualAdmin($html,200,$fullInstaller);
 preg_match('/<textarea[^>]*>(.*?)<\/textarea>/s',$fullPanel,$match);
 $cases['installer_round_trip']=isset($match[1])&&html_entity_decode($match[1],ENT_QUOTES,'UTF-8')===$fullInstaller;
+$nativeAccordion='<article class="accordion is-small is-active"><div class="accordion-header toggle"><p>PGCORTE</p><button class="toggle"></button></div><div class="accordion-body"><div class="accordion-content"><pre>original fixture</pre></div></div></article>';
+$nextAccordion='<article class="accordion is-small"><div class="accordion-header"><p>PGAVISO</p></div><div class="accordion-body">fixture</div></article>';
+$accordionHtml='<html><body><section class="accordions">'.$nativeAccordion.$nextAccordion.'</section></body></html>';
+$accordionResult=mkauthPgcorteDualAdmin($accordionHtml,200,$installer);
+$cases['native_accordion_unchanged']=strpos($accordionResult,$nativeAccordion)!==false;
+$cases['native_accordion_position']=strpos($accordionResult,'id="mkauth-pgcorte-dual-installer"')>strpos($accordionResult,$nativeAccordion)&&strpos($accordionResult,'id="mkauth-pgcorte-dual-installer"')<strpos($accordionResult,$nextAccordion);
+$cases['native_accordion_title']=strpos($accordionResult,'<p>PGCORTE DUAL STACK</p>')!==false;
+$cases['native_accordion_classes']=strpos($accordionResult,'id="mkauth-pgcorte-dual-installer" class="accordion is-small"')!==false;
+$cases['native_accordion_starts_closed']=strpos($accordionResult,'aria-expanded="false"')!==false;
+$cases['native_accordion_no_fallback']=strpos($accordionResult,'id="mkauth-pgcorte-dual-fallback"')===false;
+$singleQuotes=str_replace('class="accordion-header toggle"',"class='accordion-header toggle'",$accordionHtml);
+$cases['native_single_quote_header']=strpos(mkauthPgcorteDualAdmin($singleQuotes,200,$installer),'id="mkauth-pgcorte-dual-fallback"')===false;
 foreach($cases as $name=>$ok)if(!$ok){fwrite(STDERR,"FAILED $name\n");exit(1);}
 echo 'NATIVE_HOOK_'.count($cases)."_CASES_OK\n";

@@ -17,14 +17,41 @@ function mkauthPgcorteDualAdmin($body, $status, $installer)
         strpos($body, 'mkauth-pgcorte-dual-installer') !== false ||
         stripos($body, '</body>') === false ||
         (strpos($body, 'PGCORTE') === false && strpos($body, 'ler_pgcorte') === false)) return $body;
+    $script = @file_get_contents(__DIR__.'/native_admin.js');
+    if (!is_string($script) || $script === '') return $body;
     $code = htmlspecialchars($installer, ENT_QUOTES, 'UTF-8');
-    $panel = '<section id="mkauth-pgcorte-dual-installer" style="margin:24px;padding:18px;border:1px solid #bbb;border-radius:8px;background:#fff;color:#222">'
-        .'<h3>PGCORTE din&acirc;mico — IPv4 e IPv6 (RouterOS 6/7)</h3>'
-        .'<p>Copie e cole no terminal do MikroTik. Cria ou atualiza o script e o scheduler de 1 minuto, sem duplicar.</p>'
-        .'<p>O RADIUS controla o bloqueio; este leitor acrescenta os nomes dos clientes. O agendador antigo ler_pgcorte ser&aacute; desativado para evitar entradas est&aacute;ticas.</p>'
-        .'<textarea id="mkauth-pgcorte-dual-code" readonly style="display:block;box-sizing:border-box;width:100%;height:auto;min-height:180px;overflow:hidden;font-family:monospace">'.$code.'</textarea>'
-        .'<button type="button" id="mkauth-pgcorte-dual-copy" style="margin-top:10px;padding:10px">Copiar instalador — script + scheduler</button>'
-        .'<script>(function(){var b=document.getElementById("mkauth-pgcorte-dual-copy"),t=document.getElementById("mkauth-pgcorte-dual-code");function fit(){t.style.height="auto";t.style.height=(t.scrollHeight+2)+"px";}fit();window.addEventListener("resize",fit);b.onclick=async function(){var ok=false;if(window.isSecureContext&&navigator.clipboard){try{await navigator.clipboard.writeText(t.value);ok=true}catch(e){}}if(!ok){t.focus();t.select();try{ok=document.execCommand("copy")}catch(e){}}b.textContent=ok?"Copiado!":"Selecione o codigo e pressione Ctrl+C";};})();</script></section>';
+    $render = function ($classes) use ($code, $script) {
+        $classes = preg_replace('/\bis-active\b/', '', $classes);
+        return '<article id="mkauth-pgcorte-dual-installer" class="'.htmlspecialchars(trim($classes), ENT_QUOTES, 'UTF-8').'">'
+            .'<div class="accordion-header" id="mkauth-pgcorte-dual-heading" role="button" tabindex="0" aria-expanded="false" aria-controls="mkauth-pgcorte-dual-body">'
+            .'<p>PGCORTE DUAL STACK</p><button type="button" class="toggle" aria-label="Abrir PGCORTE DUAL STACK" tabindex="-1"></button></div>'
+            .'<div class="accordion-body" id="mkauth-pgcorte-dual-body" role="region" aria-labelledby="mkauth-pgcorte-dual-heading" aria-hidden="true">'
+            .'<div class="accordion-content"><p>RouterOS 6 e 7. Copie e cole no terminal para criar ou atualizar o script e o scheduler de 1 minuto, sem duplicar.</p>'
+            .'<p>O RADIUS controla o bloqueio. O leitor identifica os clientes nas entradas existentes. O agendador legado ler_pgcorte ser&aacute; desativado para evitar importacao estatica concorrente.</p>'
+            .'<button type="button" class="button is-primary is-small" id="mkauth-pgcorte-dual-copy">Copiar instalador — script + scheduler</button>'
+            .'<textarea id="mkauth-pgcorte-dual-code" readonly spellcheck="false" style="display:block;box-sizing:border-box;width:100%;height:auto;min-height:180px;overflow:hidden;margin-top:12px;font-family:monospace">'.$code.'</textarea>'
+            .'</div></div><style>#mkauth-pgcorte-dual-installer.is-active>.accordion-body{max-height:none}#mkauth-pgcorte-dual-heading{cursor:pointer}</style>'
+            .'<script>'.$script.'</script></article>';
+    };
+    $inserted = false;
+    $headerPattern = <<<'MK_HEADER'
+~<[^>]+class\s*=\s*(["'])[^"']*\baccordion-header\b[^"']*\1[^>]*>(.*?)</(?:div|header)>~is
+MK_HEADER;
+    $classPattern = <<<'MK_CLASS'
+~^<article\b[^>]*\sclass\s*=\s*(["'])(.*?)\1~is
+MK_CLASS;
+    $result = preg_replace_callback('~<article\b[^>]*>.*?</article>~is', function ($match) use (&$inserted, $render, $headerPattern, $classPattern) {
+        $article = $match[0];
+        if ($inserted || !preg_match($headerPattern, $article, $header)) return $article;
+        $title = html_entity_decode(strip_tags($header[2]), ENT_QUOTES, 'UTF-8');
+        if (preg_replace('/[\s+\-]+/', '', strtoupper($title)) !== 'PGCORTE') return $article;
+        $classes = 'accordion';
+        if (preg_match($classPattern, $article, $classMatch)) $classes = $classMatch[2];
+        $inserted = true;
+        return $article.$render($classes);
+    }, $body);
+    if ($inserted) return $result;
+    $panel = '<section class="accordions" id="mkauth-pgcorte-dual-fallback" style="margin:24px">'.$render('accordion').'</section>';
     return preg_replace_callback('/<\/body>/i', function () use ($panel) { return $panel.'</body>'; }, $body, 1);
 }
 

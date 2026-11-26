@@ -1,8 +1,8 @@
-# Instalador nativo PGCORTE dinamico — 1.2.0
+# Instalador nativo PGCORTE dinamico — 1.2.1
 
-Em **Provedor → Ramais → Detalhes**, o bloco **PGCORTE dinamico — IPv4 e IPv6** permite copiar o instalador de terminal. Ele cria/atualiza `ler_pgcorte_dual` e seu scheduler de 1 minuto; colar novamente nao duplica. Desativa o scheduler legado `ler_pgcorte`, que importava entradas IPv4 estaticas. Nao apaga listas, pools, profiles nem desconecta clientes. O RADIUS continua responsavel pelo bloqueio; o leitor apenas identifica entradas existentes.
+Em **Provedor → Ramais → Detalhes**, o barra **PGCORTE DUAL STACK**, logo abaixo de PGCORTE permite copiar o instalador de terminal. Ele cria/atualiza `ler_pgcorte_dual` e seu scheduler de 1 minuto; colar novamente nao duplica. Desativa o scheduler legado `ler_pgcorte`, que importava entradas IPv4 estaticas. Nao apaga listas, pools, profiles nem desconecta clientes. O RADIUS continua responsavel pelo bloqueio; o leitor apenas identifica entradas existentes.
 
-A tela nativa protegida permanece intacta. O bloco e acrescentado a resposta HTML autenticada por helper PHP, somente na pagina de detalhes do ramal. Usa `.user.ini` em `/opt/mk-auth/admin/`, com backup separado em `/var/backups/mkauth-pgcorte-native-admin/`. Configuracao PHP pode levar ate 300 segundos para atualizar no cache. Se necessario, recarregue a pagina depois desse prazo.
+A tela nativa protegida permanece intacta. O acordeao e acrescentado a resposta HTML autenticada por helper PHP, somente na pagina de detalhes do ramal. Usa `.user.ini` em `/opt/mk-auth/admin/`, com backup separado em `/var/backups/mkauth-pgcorte-native-admin/`. Configuracao PHP pode levar ate 300 segundos para atualizar no cache. Se necessario, recarregue a pagina depois desse prazo.
 
 O codigo evita `:jobname` e outras funcoes exclusivas recentes; a leitura IPv4 e executada antes da parte IPv6, que e carregada com parse protegido. Assim, IPv6 ausente/indisponivel nao interrompe a identificacao IPv4. Validado em RouterOS 6.49.23 e 7.24.7, incluindo criacao/reaplicacao de script e scheduler e execucao com IPv6 ausente.
 
@@ -15,7 +15,7 @@ python3 native_pgcorte.py check --admin
 python3 native_pgcorte.py rollback --admin --backup /var/backups/mkauth-pgcorte-native-admin/DIRETORIO
 ```
 
-# MK-Auth PGCORTE dual — 1.2.0
+# MK-Auth PGCORTE dual — 1.2.1
 
 Inclui o reparo IPv4 RADIUS para clientes principais **e logins adicionais**, e integra o complemento IPv6 na resposta nativa `/mkt/pgcorte`. O provedor continua copiando PGCORTE em **Provedor → Ramais → Detalhes** e colando na CCR. A tela, as chaves e o caminho do Fetch nativo permanecem iguais. Instalacoes existentes recebem o complemento no proximo Fetch/import bem-sucedido.
 
@@ -41,7 +41,7 @@ O pacote confere SHA256SUMS, PHP e schema RADIUS. O FreeRADIUS reinicia apenas q
 
 Recusa sobrescrever um auto_prepend_file personalizado existente. Exige PHP-FPM/CGI com `.user.ini` habilitado; Apache mod_php nao utiliza essa configuracao. Validado em MK-Auth 26.03/PHP-FPM 8.0.30 e RouterOS 7.24.7. RouterOS 6.49.23 e RouterOS 7.24.7 foram validados.
 
-Helpers: `/usr/local/share/mkauth-pgcorte-dual/v1.2.0/`. Nao apague esses arquivos enquanto o auto_prepend estiver configurado ou no cache do PHP. Backups privados: `/var/backups/mkauth-pgcorte-native/`. O JSON informa o diretorio exato.
+Helpers: `/usr/local/share/mkauth-pgcorte-dual/v1.2.1/`. Nao apague esses arquivos enquanto o auto_prepend estiver configurado ou no cache do PHP. Backups privados: `/var/backups/mkauth-pgcorte-native/`. O JSON informa o diretorio exato.
 
 ```sh
 python3 native_pgcorte.py rollback --backup /var/backups/mkauth-pgcorte-native/DIRETORIO
@@ -54,7 +54,7 @@ Evite agendar um segundo identificador dual em paralelo com o leitor nativo. Est
 
 ## Validacao e limites
 
-Passou em 16 testes Python (incluindo migracao, idempotencia, rollback e preservacao de configuracao personalizada), 19 cenarios SQL em banco isolado e 16 casos dos filtros PHP. A validacao normal de instalacao usa EXPLAIN: nao grava clientes, senhas, contratos ou historico no banco.
+Passou em 16 testes Python (incluindo migracao, idempotencia, rollback e preservacao de configuracao personalizada), 19 cenarios SQL em banco isolado e 23 casos dos filtros PHP. A validacao normal de instalacao usa EXPLAIN: nao grava clientes, senhas, contratos ou historico no banco.
 
 A consulta so completa Framed-IP-Address ausente; nao corrige cadastro sem IPv4 valido nem substitui um atributo existente. Confere formato canonico e exclui 0.0.0.0 e broadcast. Nao altera check de autenticacao, accounting, velocidades ou atributos IPv6. Duplicidade de entradas estaticas/dinamicas na address-list e timeouts RADIUS sao problemas separados.
 
@@ -63,3 +63,7 @@ O instalador verifica e preserva a configuracao SQL reconhecida. Se encontrar co
 Para testar novamente sem usar dados de clientes reais: `python3 -m unittest discover -s tests -v` e `php tests/test_native_hook.php`. O teste MySQL e separado, recebe a configuracao via stdin, cria apenas seu proprio banco temporario e o remove ao terminar; nao e executado automaticamente pelo instalador.
 
 A versao 1.1.1 corrige a saida da protecao contra execucoes simultaneas no RouterOS (`:return 0`). Reconhece a configuracao nativa da 1.1.0 e migra com backup, sem sobrescrever auto_prepend personalizado.
+
+A barra PGCORTE DUAL STACK utiliza as classes do acordeao nativo, inicia fechada e possui o mesmo botao de +/-. O codigo conserva escapes e quebras de linha e o botao de copia funciona tambem em HTTP.
+
+Teste da interacao do acordeao (abrir/fechar, teclado, copia HTTP/HTTPS e posicionamento): `node tests/test_native_admin.js`.
