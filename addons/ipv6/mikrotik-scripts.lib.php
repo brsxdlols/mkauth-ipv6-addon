@@ -61,6 +61,13 @@ __ENCODER__
         :do {:set ifaceName [/interface get $ifaceKey name]} on-error={:set ended true}
         :if ([:len [:tostr $ifaceName]]=0) do={:set ended true}
         :if (!$ended) do={
+        :local sessionHex ""
+        :local sessionDecimal ""
+        :local active [/ppp active find where name=$pppUser and address=$ipv4]
+        :if ([:len $active]=1) do={
+            :local sid [/ppp active get $active session-id]
+            :if ([:typeof $sid]="num") do={:set sessionDecimal [:tostr $sid]} else={:set sessionHex [:tostr $sid]}
+        }
         :local prefixes ""
         :foreach srvId in=[/ipv6 dhcp-server find where interface=$ifaceName] do={
             :local srvName [/ipv6 dhcp-server get $srvId name]
@@ -83,8 +90,8 @@ __ENCODER__
         :local signature $prefixes
         :if ($prefixes!="") do={:set pdSeen true}
         :if ($signature="") do={:set signature "WAN_ONLY"}
-        :if ($signature!=$lastSent) do={
-            :local data ("v=2&user=".[$encode $pppUser]."&ip=".[$encode $ipv4]."&prefixes=".[$encode $prefixes]."&radius_id=".$radiusId."&token=".[$encode $token])
+        :if (($signature!=$lastSent) && (([:len $sessionHex]>0) || ([:len $sessionDecimal]>0))) do={
+            :local data ("v=2&user=".[$encode $pppUser]."&ip=".[$encode $ipv4]."&prefixes=".[$encode $prefixes]."&radius_id=".$radiusId."&session_id=".[$encode $sessionHex]."&session_id_decimal=".[$encode $sessionDecimal]."&token=".[$encode $token])
             :do {
                 :local result [/tool fetch url=$url http-method=post http-header-field="Content-Type: application/x-www-form-urlencoded" http-data=$data output=user as-value idle-timeout=5s]
                 :local reply ($result->"data")

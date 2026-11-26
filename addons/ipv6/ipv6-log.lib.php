@@ -40,11 +40,11 @@ function ipv6LogSchema($db)
     }
 }
 
-function ipv6LogRadius($db,$user,$ip,$nas='',$radiusId=0)
+function ipv6LogRadius($db,$user,$ip,$nas='',$radiusId=0,$sessionId='')
 {
-    $s=$db->prepare("SELECT radacctid,acctsessionid,username,framedipaddress,callingstationid,framedipv6address,nasipaddress FROM radacct WHERE username=? AND framedipaddress=? AND acctstoptime IS NULL AND (?='' OR nasipaddress=?) AND (?=0 OR radacctid=?) ORDER BY radacctid DESC LIMIT 2");
+    $s=$db->prepare("SELECT radacctid,acctsessionid,username,framedipaddress,callingstationid,framedipv6address,nasipaddress FROM radacct WHERE username=? AND framedipaddress=? AND acctstoptime IS NULL AND (?='' OR nasipaddress=?) AND (?=0 OR radacctid=?) AND (?='' OR LOWER(acctsessionid)=?) ORDER BY radacctid DESC LIMIT 2");
     if(!$s)throw new RuntimeException('Falha ao consultar sessao RADIUS.');
-    $s->bind_param('ssssii',$user,$ip,$nas,$nas,$radiusId,$radiusId);$s->execute();$rows=$s->get_result()->fetch_all(MYSQLI_ASSOC);$s->close();
+    $s->bind_param('ssssiiss',$user,$ip,$nas,$nas,$radiusId,$radiusId,$sessionId,$sessionId);$s->execute();$rows=$s->get_result()->fetch_all(MYSQLI_ASSOC);$s->close();
     if(count($rows)>1)throw new RuntimeException('SESSAO_AMBIGUA');
     return $rows[0]??null;
 }

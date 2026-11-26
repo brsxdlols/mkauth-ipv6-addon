@@ -23,6 +23,8 @@ O protocolo 2 confirma a gravação com OK e o identificador da linha RADIUS. S�
 
 O identificador retornado é mantido nas tentativas seguintes. A API rejeita a associação a uma sessão encerrada. Eventos repetidos da mesma sessão e prefixo atualizam a observação sem duplicar o registro.
 
+A coleta também envia o identificador PPP lido em `/ppp active`. O valor numérico do RouterOS é convertido para o formato hexadecimal do `Acct-Session-Id` no receptor. Isso permite identificar a sessão correta quando uma conexão anterior do mesmo login e IPv4 ainda aparece aberta no RADIUS. O script aguarda um identificador disponível antes de enviar. Requisições antigas continuam aceitas; se permanecerem ambíguas, a API mantém a recusa HTTP 409 em vez de associar dados por suposição.
+
 O On Down solicita conciliação. A tarefa local de minuto em minuto encerra somente registros cujo identificador RADIUS correspondente possui acctstoptime. Uma desconexão antiga não encerra por suposição a sessão nova do mesmo login. Sessões sem Accounting-Stop continuam dependendo da correção do accounting nativo; o addon não inventa o encerramento.
 
 O endpoint continua aceitando os campos anteriores de Fetch. Instalações antigas devem atualizar os scripts para obter as tentativas adicionais, confirmação detalhada e vínculo exato de sessão.
