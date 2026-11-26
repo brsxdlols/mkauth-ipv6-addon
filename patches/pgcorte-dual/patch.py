@@ -21,7 +21,7 @@ import tempfile
 import time
 import uuid
 
-VERSION = '1.2.1'
+VERSION = '1.3.0'
 BEGIN = '# BEGIN MKAUTH_PGCORTE_IPV4_PATCH v1'
 END = '# END MKAUTH_PGCORTE_IPV4_PATCH'
 LEGACY = '34421b9bd9770a914ff7147f6dc3a9dc8db70ded5007cdd7d23951f9e5a10354'

@@ -1,4 +1,4 @@
-# Instalador nativo PGCORTE dinamico — 1.2.1
+# Instalador nativo PGCORTE dinamico — 1.3.0
 
 Em **Provedor → Ramais → Detalhes**, o barra **PGCORTE DUAL STACK**, logo abaixo de PGCORTE permite copiar o instalador de terminal. Ele cria/atualiza `ler_pgcorte_dual` e seu scheduler de 1 minuto; colar novamente nao duplica. Desativa o scheduler legado `ler_pgcorte`, que importava entradas IPv4 estaticas. Nao apaga listas, pools, profiles nem desconecta clientes. O RADIUS continua responsavel pelo bloqueio; o leitor apenas identifica entradas existentes.
 
@@ -41,7 +41,7 @@ O pacote confere SHA256SUMS, PHP e schema RADIUS. O FreeRADIUS reinicia apenas q
 
 Recusa sobrescrever um auto_prepend_file personalizado existente. Exige PHP-FPM/CGI com `.user.ini` habilitado; Apache mod_php nao utiliza essa configuracao. Validado em MK-Auth 26.03/PHP-FPM 8.0.30 e RouterOS 7.24.7. RouterOS 6.49.23 e RouterOS 7.24.7 foram validados.
 
-Helpers: `/usr/local/share/mkauth-pgcorte-dual/v1.2.1/`. Nao apague esses arquivos enquanto o auto_prepend estiver configurado ou no cache do PHP. Backups privados: `/var/backups/mkauth-pgcorte-native/`. O JSON informa o diretorio exato.
+Helpers: `/usr/local/share/mkauth-pgcorte-dual/v1.3.0/`. Nao apague esses arquivos enquanto o auto_prepend estiver configurado ou no cache do PHP. Backups privados: `/var/backups/mkauth-pgcorte-native/`. O JSON informa o diretorio exato.
 
 ```sh
 python3 native_pgcorte.py rollback --backup /var/backups/mkauth-pgcorte-native/DIRETORIO
@@ -54,7 +54,7 @@ Evite agendar um segundo identificador dual em paralelo com o leitor nativo. Est
 
 ## Validacao e limites
 
-Passou em 16 testes Python (incluindo migracao, idempotencia, rollback e preservacao de configuracao personalizada), 19 cenarios SQL em banco isolado e 23 casos dos filtros PHP. A validacao normal de instalacao usa EXPLAIN: nao grava clientes, senhas, contratos ou historico no banco.
+Passou em 16 testes Python (incluindo migracao, idempotencia, rollback e preservacao de configuracao personalizada), 19 cenarios SQL em banco isolado e 24 casos dos filtros PHP. A validacao normal de instalacao usa EXPLAIN: nao grava clientes, senhas, contratos ou historico no banco.
 
 A consulta so completa Framed-IP-Address ausente; nao corrige cadastro sem IPv4 valido nem substitui um atributo existente. Confere formato canonico e exclui 0.0.0.0 e broadcast. Nao altera check de autenticacao, accounting, velocidades ou atributos IPv6. Duplicidade de entradas estaticas/dinamicas na address-list e timeouts RADIUS sao problemas separados.
 
@@ -67,3 +67,11 @@ A versao 1.1.1 corrige a saida da protecao contra execucoes simultaneas no Route
 A barra PGCORTE DUAL STACK utiliza as classes do acordeao nativo, inicia fechada e possui o mesmo botao de +/-. O codigo conserva escapes e quebras de linha e o botao de copia funciona tambem em HTTP.
 
 Teste da interacao do acordeao (abrir/fechar, teclado, copia HTTP/HTTPS e posicionamento): `node tests/test_native_admin.js`.
+
+## PPPoE de um ramal especifico
+
+O botao ? no cabecalho PPPOE abre um popup. Informe o IPv4 cadastrado do ramal e clique em Copiar codigo deste ramal. O codigo e lido da propria secao PPPoE e somente a URL e alterada de `/mkt/pppoe` para `/mkt/pppoe/IP_DO_RAMAL`; preserva servidor, USER, PASS e escapes do source nativo. O formato foi fornecido pelo provedor como exemplo de uso funcional. O popup nao executa Fetch, importa listas nem altera scripts automaticamente.
+
+IP invalido, ausencia de codigo ou varias URLs impedem a copia, evitando gerar um filtro ambiguo. Se ler_pppoe ja existe, edite sua URL no Source em vez de criar novamente o agendamento nativo.
+
+Teste do filtro e popup PPPoE (IPs validos/invalidos, escapes, preservacao do codigo, copia HTTP/HTTPS): `node tests/test_native_pppoe_help.js`.

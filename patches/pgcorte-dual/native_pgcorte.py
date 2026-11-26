@@ -13,7 +13,7 @@ import sys
 import uuid
 from patch import atomic_write, locked, PatchError, save_json
 
-ROOT = Path('/usr/local/share/mkauth-pgcorte-dual/v1.2.1')
+ROOT = Path('/usr/local/share/mkauth-pgcorte-dual/v1.3.0')
 BACKUPS = Path('/var/backups/mkauth-pgcorte-native')
 TARGET = Path('/opt/mk-auth/mkt/.user.ini')
 NATIVE = Path('/opt/mk-auth/mkt/pgcorte.hhvm')
@@ -59,7 +59,7 @@ def execute(action, backup=None):
     data = TARGET.read_bytes() if exists else b''
     block = ini_block()
     installed = block in data
-    previous = next((b for b in [previous_ini_block(), previous_ini_block().replace(b'/v1.1.0/', b'/v1.1.1/'), previous_ini_block().replace(b'/v1.1.0/', b'/v1.2.0/')] if b in data), b'')
+    previous = next((b for b in [previous_ini_block(), previous_ini_block().replace(b'/v1.1.0/', b'/v1.1.1/'), previous_ini_block().replace(b'/v1.1.0/', b'/v1.2.0/'), previous_ini_block().replace(b'/v1.1.0/', b'/v1.2.1/')] if b in data), b'')
     upgrading = bool(previous)
     if b'MKAUTH_PGCORTE_DUAL_NATIVE' in data and not installed and not upgrading:
         raise PatchError('Configuracao propria divergente; revise antes de atualizar.')
@@ -67,7 +67,7 @@ def execute(action, backup=None):
     if active_prepend and ((not installed and not upgrading) or len(active_prepend) != 1):
         raise PatchError('auto_prepend_file personalizado encontrado; configuracao preservada.')
     package = Path(__file__).resolve().parent
-    files = {name: (package/name).read_bytes() for name in ('native_hook.php', 'pgcorte_dual.rsc', 'instalar_pgcorte_dual.rsc', 'ler_pgcorte_dual.rsc', 'native_admin.js')}
+    files = {name: (package/name).read_bytes() for name in ('native_hook.php', 'pgcorte_dual.rsc', 'instalar_pgcorte_dual.rsc', 'ler_pgcorte_dual.rsc', 'native_admin.js', 'native_pppoe_help.js')}
     lint(NATIVE)
     lint(package/'native_hook.php')
     if action == 'preflight':

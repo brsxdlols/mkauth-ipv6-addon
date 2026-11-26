@@ -19,6 +19,8 @@ function mkauthPgcorteDualAdmin($body, $status, $installer)
         (strpos($body, 'PGCORTE') === false && strpos($body, 'ler_pgcorte') === false)) return $body;
     $script = @file_get_contents(__DIR__.'/native_admin.js');
     if (!is_string($script) || $script === '') return $body;
+    $pppoeHelp = @file_get_contents(__DIR__.'/native_pppoe_help.js');
+    if (is_string($pppoeHelp)) $script .= "\n".$pppoeHelp;
     $code = htmlspecialchars($installer, ENT_QUOTES, 'UTF-8');
     $render = function ($classes) use ($code, $script) {
         $classes = preg_replace('/\bis-active\b/', '', $classes);

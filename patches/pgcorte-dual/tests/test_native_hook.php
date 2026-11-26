@@ -40,5 +40,6 @@ $cases['native_accordion_starts_closed']=strpos($accordionResult,'aria-expanded=
 $cases['native_accordion_no_fallback']=strpos($accordionResult,'id="mkauth-pgcorte-dual-fallback"')===false;
 $singleQuotes=str_replace('class="accordion-header toggle"',"class='accordion-header toggle'",$accordionHtml);
 $cases['native_single_quote_header']=strpos(mkauthPgcorteDualAdmin($singleQuotes,200,$installer),'id="mkauth-pgcorte-dual-fallback"')===false;
+$cases['pppoe_help_script_included']=strpos($panel,'mkauth-pppoe-help')!==false;
 foreach($cases as $name=>$ok)if(!$ok){fwrite(STDERR,"FAILED $name\n");exit(1);}
 echo 'NATIVE_HOOK_'.count($cases)."_CASES_OK\n";
