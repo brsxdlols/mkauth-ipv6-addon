@@ -11,6 +11,41 @@ function mkauthPgcorteDualTransform($body, $status, $worker)
     }
     return $body."\n".$worker;
 }
+function mkauthPppoeRamalContext($id, array $globals)
+{
+    if (!is_string($id) || strlen($id) > 64) return [];
+    $numeric = preg_match('/^[1-9][0-9]{0,9}$/D', $id);
+    if (!$numeric && !preg_match('/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/Di', $id)) return [];
+    $fromRow = function ($row) use ($id, $numeric) {
+        if (!is_array($row) || !isset($row['nasname'])) return [];
+        $matches = $numeric ? isset($row['id']) && (string)$row['id'] === $id
+            : isset($row['uuid_nas']) && strcasecmp((string)$row['uuid_nas'], $id) === 0;
+        $ip = trim((string)$row['nasname']);
+        if (!$matches || !filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) || $ip === '0.0.0.0' || $ip === '255.255.255.255') return [];
+        return ['id'=>$id, 'ip'=>$ip, 'name'=>(string)($row['shortname'] ?? '')];
+    };
+    foreach ($globals as $value) {
+        $context = $fromRow($value);
+        if ($context) return $context;
+    }
+    // Reuse the native page's existing connection; never store database credentials.
+    foreach ($globals as $value) {
+        if (!($value instanceof mysqli)) continue;
+        try {
+            $query = $numeric ? 'SELECT id,nasname,shortname FROM nas WHERE id=? LIMIT 2'
+                : 'SELECT id,uuid_nas,nasname,shortname FROM nas WHERE uuid_nas=? LIMIT 2';
+            $statement = @$value->prepare($query);
+            if (!$statement) continue;
+            $statement->bind_param('s', $id);
+            $statement->execute();
+            $rows = $statement->get_result()->fetch_all(MYSQLI_ASSOC);
+            $statement->close();
+            if (count($rows) === 1 && ($context = $fromRow($rows[0]))) return $context;
+        } catch (Throwable $failure) { /* The browser can read the native edit form. */ }
+    }
+    return [];
+}
+
 function mkauthPgcorteDualAdmin($body, $status, $installer)
 {
     if ($status !== 200 || !is_string($installer) || $installer === '' ||
@@ -21,10 +56,13 @@ function mkauthPgcorteDualAdmin($body, $status, $installer)
     if (!is_string($script) || $script === '') return $body;
     $pppoeHelp = @file_get_contents(__DIR__.'/native_pppoe_help.js');
     if (is_string($pppoeHelp)) $script .= "\n".$pppoeHelp;
+    $ramal = mkauthPppoeRamalContext($_GET['id'] ?? '', $GLOBALS);
+    if (!$ramal && is_string($_GET['id'] ?? null)) $ramal = ['id'=>$_GET['id']];
+    $ramalJson = htmlspecialchars(json_encode($ramal, JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT), ENT_QUOTES, 'UTF-8');
     $code = htmlspecialchars($installer, ENT_QUOTES, 'UTF-8');
-    $render = function ($classes) use ($code, $script) {
+    $render = function ($classes) use ($code, $script, $ramalJson) {
         $classes = preg_replace('/\bis-active\b/', '', $classes);
-        return '<article id="mkauth-pgcorte-dual-installer" class="'.htmlspecialchars(trim($classes), ENT_QUOTES, 'UTF-8').'">'
+        return '<article id="mkauth-pgcorte-dual-installer" data-ramal-context="'.$ramalJson.'" class="'.htmlspecialchars(trim($classes), ENT_QUOTES, 'UTF-8').'">'
             .'<div class="accordion-header" id="mkauth-pgcorte-dual-heading" role="button" tabindex="0" aria-expanded="false" aria-controls="mkauth-pgcorte-dual-body">'
             .'<p>PGCORTE DUAL STACK</p><button type="button" class="toggle" aria-label="Abrir PGCORTE DUAL STACK" tabindex="-1"></button></div>'
             .'<div class="accordion-body" id="mkauth-pgcorte-dual-body" role="region" aria-labelledby="mkauth-pgcorte-dual-heading" aria-hidden="true">'

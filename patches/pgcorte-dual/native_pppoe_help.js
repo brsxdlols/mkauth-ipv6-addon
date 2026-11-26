@@ -9,7 +9,7 @@
         return value !== '0.0.0.0' && value !== '255.255.255.255';
     }
     function filterCode(source, ip) {
-        if (!validIp(ip)) throw new Error('Informe o IPv4 do ramal cadastrado no MK-Auth.');
+        if (!validIp(ip)) throw new Error('IPv4 do ramal nao identificado no cadastro.');
         var matches = 0;
         var result = source.replace(/\/mkt\/pppoe(?:\/(?:\d{1,3}\.){3}\d{1,3})?(?=\\*["']|\s|[?&#]|$)/g, function () {
             matches++;
@@ -17,6 +17,37 @@
         });
         if (matches !== 1) throw new Error('Nao foi possivel identificar uma unica URL /mkt/pppoe no codigo desta pagina.');
         return result;
+    }
+    async function currentRamal() {
+        var id = new URLSearchParams(window.location.search).get('id');
+        if (!id) throw new Error('Ramal nao identificado nesta pagina.');
+        var panel = document.getElementById('mkauth-pgcorte-dual-installer');
+        var context = {};
+        try { context = JSON.parse(panel ? panel.getAttribute('data-ramal-context') || '{}' : '{}'); } catch (failure) {}
+        if (context.id && context.id !== id) throw new Error('O ramal da pagina mudou. Atualize antes de copiar o codigo.');
+        if (context.id === id && validIp(context.ip)) return context;
+        // Read the current ramal's native form with the existing authenticated session.
+        var url = new URL('ramal_alt.hhvm', window.location.href);
+        url.searchParams.set('id', id);
+        var links = document.querySelectorAll('a[href*="ramal_alt.hhvm"]');
+        for (var link = 0; link < links.length; link++) {
+            if (typeof links[link].href !== 'string') continue;
+            var nativeUrl = new URL(links[link].href, window.location.href);
+            if (nativeUrl.origin === url.origin && nativeUrl.pathname === url.pathname && nativeUrl.searchParams.get('id') === id) { url = nativeUrl; break; }
+        }
+        var response = await fetch(url.href, {credentials: 'same-origin', cache: 'no-store'});
+        if (!response.ok || (response.url && new URL(response.url).pathname !== url.pathname)) {
+            throw new Error('Nao foi possivel identificar o ramal. Atualize a pagina ou confira seu acesso ao cadastro.');
+        }
+        var form = new DOMParser().parseFromString(await response.text(), 'text/html');
+        var nodes = form.querySelectorAll('input[name="nasname"],input#nasname,input[name="ip"],input#ip,input[name="ipramal"],input[name="ip_ramal"]');
+        var ips = [];
+        for (var i = 0; i < nodes.length; i++) {
+            var value = nodes[i].value.trim();
+            if (validIp(value) && ips.indexOf(value) === -1) ips.push(value);
+        }
+        if (ips.length !== 1) throw new Error('Nao foi possivel identificar um unico IPv4 deste ramal. Confira seu cadastro no MK-Auth.');
+        return {id: id, ip: ips[0], name: ''};
     }
     function mount() {
         if (document.getElementById('mkauth-pppoe-help')) return;
@@ -40,44 +71,52 @@
         dialog.setAttribute('aria-labelledby', 'mkauth-pppoe-title');
         dialog.style.cssText = 'padding:0;border:0;background:transparent;max-width:calc(100vw - 24px);max-height:90vh';
         dialog.innerHTML = '<div class="modal-card" style="margin:0;max-width:calc(100vw - 24px);max-height:88vh">'
-            + '<header class="modal-card-head"><p class="modal-card-title" id="mkauth-pppoe-title" style="white-space:normal">PPPoE de um ramal espec&iacute;fico</p><button type="button" class="delete" data-pppoe-close aria-label="Fechar ajuda"></button></header>'
-            + '<section class="modal-card-body"><p>Informe o <strong>IP do ramal cadastrado no MK-Auth</strong>. O bot&atilde;o abaixo copia o c&oacute;digo completo desta se&ccedil;&atilde;o, alterando somente a URL de exporta&ccedil;&atilde;o.</p>'
-            + '<p style="margin-top:10px">Sem filtro: <code>/mkt/pppoe</code><br>Somente um ramal: <code>/mkt/pppoe/172.16.12.125</code></p>'
-            + '<div class="field" style="margin-top:16px"><label class="label" for="mkauth-pppoe-ip">IP do ramal</label><div class="control"><input class="input" id="mkauth-pppoe-ip" placeholder="Ex.: 172.16.12.125" autocomplete="off" inputmode="decimal"></div></div>'
+            + '<header class="modal-card-head"><p class="modal-card-title" id="mkauth-pppoe-title" style="white-space:normal">PPPoE deste ramal</p><button type="button" class="delete" data-pppoe-close aria-label="Fechar ajuda"></button></header>'
+            + '<section class="modal-card-body"><p>O c&oacute;digo abaixo j&aacute; vem completo e filtrado para o <strong>ramal aberto nesta p&aacute;gina</strong>. Basta copiar e colar no terminal.</p>'
+            + '<p id="mkauth-pppoe-current" style="margin-top:12px">Identificando o ramal...</p>'
             + '<p class="help is-danger" id="mkauth-pppoe-error" role="alert" hidden></p>'
-            + '<p style="margin-top:12px">IPMKAUTH, USER e PASS permanecem como foram gerados na p&aacute;gina. O IP informado aqui &eacute; o do ramal, n&atilde;o o IP do MK-Auth nem o IP de um cliente PPPoE.</p>'
+            + '<p style="margin-top:12px">IPMKAUTH, USER e PASS permanecem como foram gerados na p&aacute;gina. O IP do ramal &eacute; identificado automaticamente; n&atilde;o &eacute; preciso preencher nada.</p>'
             + '<p style="margin-top:10px">Se ler_pppoe j&aacute; existe no MikroTik, atualize o Source do script existente; n&atilde;o crie outro agendamento.</p>'
             + '<label class="label" for="mkauth-pppoe-code" style="margin-top:16px">C&oacute;digo com filtro</label><textarea readonly spellcheck="false" id="mkauth-pppoe-code" style="display:block;width:100%;box-sizing:border-box;min-height:150px;overflow:hidden;font:12px monospace"></textarea></section>'
             + '<footer class="modal-card-foot"><button type="button" class="button is-primary" id="mkauth-pppoe-copy">Copiar c&oacute;digo deste ramal</button><button type="button" class="button" data-pppoe-close>Fechar</button></footer></div>';
         var style = document.createElement('style');
         style.textContent = '#mkauth-pppoe-dialog::backdrop{background:rgba(10,10,10,.65)}';
         dialog.appendChild(style); document.body.appendChild(dialog);
-        var ip = dialog.querySelector('#mkauth-pppoe-ip');
+        var current = dialog.querySelector('#mkauth-pppoe-current');
+        var contextPromise = null;
+        var contextId = null;
         var code = dialog.querySelector('#mkauth-pppoe-code');
         var error = dialog.querySelector('#mkauth-pppoe-error');
         var copy = dialog.querySelector('#mkauth-pppoe-copy');
         function fit() { code.style.height = 'auto'; code.style.height = (code.scrollHeight + 2) + 'px'; }
-        function update(showError) {
-            code.value = ''; error.hidden = true;
-            copy.textContent = 'Copiar codigo deste ramal';
+        async function prepare() {
+            code.value = ''; error.hidden = true; copy.disabled = true;
+            copy.textContent = 'Preparando codigo...';
             try {
+                var pageId = new URLSearchParams(window.location.search).get('id');
+                if (!contextPromise || contextId !== pageId) { contextId = pageId; contextPromise = currentRamal(); }
+                var ramal = await contextPromise;
+                current.textContent = 'Ramal atual: ' + (ramal.name ? ramal.name + ' — ' : '') + ramal.ip;
                 var nativeCode = article.querySelector('pre') || article.querySelector('textarea') || article.querySelector('code');
                 if (!nativeCode) throw new Error('Codigo PPPoE nao localizado nesta pagina.');
                 var source = typeof nativeCode.value === 'string' ? nativeCode.value : nativeCode.textContent;
-                code.value = filterCode(source, ip.value.trim());
+                code.value = filterCode(source, ramal.ip);
+                copy.textContent = 'Copiar codigo deste ramal'; copy.disabled = false;
                 fit(); return true;
             } catch (failure) {
-                if (showError) { error.textContent = failure.message; error.hidden = false; }
-                fit(); return false;
+                contextPromise = null;
+                error.textContent = failure.message; error.hidden = false;
+                current.textContent = 'Ramal nao identificado.';
+                copy.textContent = 'Codigo indisponivel'; fit(); return false;
             }
         }
-        help.addEventListener('click', function (event) {
+        help.addEventListener('click', async function (event) {
             event.preventDefault(); event.stopImmediatePropagation();
-            dialog.showModal(); update(false); ip.focus();
+            dialog.showModal();
+            if (await prepare()) copy.focus();
         }, true);
-        ip.addEventListener('input', function () { update(ip.value.trim() !== ''); });
         copy.addEventListener('click', async function () {
-            if (!update(true)) { ip.focus(); return; }
+            if (!await prepare()) return;
             var ok = false;
             if (window.isSecureContext && navigator.clipboard) {
                 try { await navigator.clipboard.writeText(code.value); ok = true; } catch (failure) {}

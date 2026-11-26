@@ -13,7 +13,7 @@ import sys
 import uuid
 from patch import atomic_write, locked, PatchError, save_json
 
-ROOT = Path('/usr/local/share/mkauth-pgcorte-dual/v1.3.0')
+ROOT = Path('/usr/local/share/mkauth-pgcorte-dual/v1.3.1')
 BACKUPS = Path('/var/backups/mkauth-pgcorte-native')
 TARGET = Path('/opt/mk-auth/mkt/.user.ini')
 NATIVE = Path('/opt/mk-auth/mkt/pgcorte.hhvm')
@@ -59,7 +59,7 @@ def execute(action, backup=None):
     data = TARGET.read_bytes() if exists else b''
     block = ini_block()
     installed = block in data
-    previous = next((b for b in [previous_ini_block(), previous_ini_block().replace(b'/v1.1.0/', b'/v1.1.1/'), previous_ini_block().replace(b'/v1.1.0/', b'/v1.2.0/'), previous_ini_block().replace(b'/v1.1.0/', b'/v1.2.1/')] if b in data), b'')
+    previous = next((b for b in [previous_ini_block(), previous_ini_block().replace(b'/v1.1.0/', b'/v1.1.1/'), previous_ini_block().replace(b'/v1.1.0/', b'/v1.2.0/'), previous_ini_block().replace(b'/v1.1.0/', b'/v1.2.1/'), previous_ini_block().replace(b'/v1.1.0/', b'/v1.3.0/')] if b in data), b'')
     upgrading = bool(previous)
     if b'MKAUTH_PGCORTE_DUAL_NATIVE' in data and not installed and not upgrading:
         raise PatchError('Configuracao propria divergente; revise antes de atualizar.')
