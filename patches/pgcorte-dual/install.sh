@@ -7,5 +7,7 @@ if [ ! -f "$PATCH_DIR/SHA256SUMS" ]; then
 fi
 (cd "$PATCH_DIR" && sha256sum -c SHA256SUMS >/dev/null)
 python3 "$PATCH_DIR/native_pgcorte.py" preflight
+python3 "$PATCH_DIR/native_pgcorte.py" preflight --admin
 python3 "$PATCH_DIR/patch.py" apply --activate "$@"
-exec python3 "$PATCH_DIR/native_pgcorte.py" apply
+python3 "$PATCH_DIR/native_pgcorte.py" apply
+exec python3 "$PATCH_DIR/native_pgcorte.py" apply --admin

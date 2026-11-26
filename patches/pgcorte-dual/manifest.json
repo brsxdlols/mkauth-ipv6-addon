@@ -1,6 +1,6 @@
 {
   "id": "mkauth-pgcorte-dual",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "entrypoint": "install.sh",
   "diagnostic": "python3 patch.py check",
   "configuration_file": "/etc/freeradius/3.0/mods-config/sql/main/mysql/queries.conf",
@@ -18,5 +18,10 @@
   "native_endpoint": "/mkt/pgcorte",
   "native_integration_file": "/opt/mk-auth/mkt/.user.ini",
   "native_source_preserved": true,
-  "php_user_ini_cache_seconds": 300
+  "php_user_ini_cache_seconds": 300,
+  "native_admin_integration_file": "/opt/mk-auth/admin/.user.ini",
+  "routeros_6_validation": "passed_6.49.23",
+  "native_installer": "Provedor > Ramais > Detalhes > PGCORTE dinamico",
+  "routeros_7_validation": "passed_7.24.7",
+  "php_filter_cases": 16
 }
