@@ -93,7 +93,7 @@ __ENCODER__
         :if (($signature!=$lastSent) && (([:len $sessionHex]>0) || ([:len $sessionDecimal]>0))) do={
             :local data ("v=2&user=".[$encode $pppUser]."&ip=".[$encode $ipv4]."&prefixes=".[$encode $prefixes]."&radius_id=".$radiusId."&session_id=".[$encode $sessionHex]."&session_id_decimal=".[$encode $sessionDecimal]."&token=".[$encode $token])
             :do {
-                :local result [/tool fetch url=$url http-method=post http-header-field="Content-Type: application/x-www-form-urlencoded" http-data=$data output=user as-value idle-timeout=5s]
+                :local result [/tool fetch url=$url http-method=post http-header-field="Content-Type: application/x-www-form-urlencoded" http-data=$data output=user as-value]
                 :local reply ($result->"data")
                 :local split [:find $reply "|"]
                 :if ([:typeof $split]="num") do={
@@ -128,7 +128,7 @@ ROS;
     :local token __TOKEN__
 __ENCODER__
     :do {
-        :local result [/tool fetch url=($url."?user=".[$encode $pppUser]."&ip=".[$encode $ipv4]."&token=".[$encode $token]) http-method=get output=user as-value idle-timeout=5s]
+        :local result [/tool fetch url=($url."?user=".[$encode $pppUser]."&ip=".[$encode $ipv4]."&token=".[$encode $token]) http-method=get output=user as-value]
         :if (($result->"data")!="OK") do={:log error ("IPv6 Log: resposta inesperada ao conciliar desconexao: ".$pppUser)}
     } on-error={:log error ("IPv6 Log: Fetch de desconexao falhou; conciliacao RADIUS permanece agendada: ".$pppUser)}
 }
