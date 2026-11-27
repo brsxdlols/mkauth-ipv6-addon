@@ -8,6 +8,21 @@ function ipv6LogValid($value, $prefixRequired = false)
     return count($p)===1 || (preg_match('/^(0|[1-9][0-9]{0,2})$/D',$p[1]) && (int)$p[1]<=128);
 }
 
+
+// Older MK-Auth schemas do not provide a native WAN IPv6 column.
+// Read compatibility only: never add native columns or infer a WAN from a PD.
+function ipv6LogWanColumn($db, $alias = 'r')
+{
+    if (!in_array($alias, array('r', ''), true)) throw new InvalidArgumentException('Alias invalido.');
+    static $columns = array();
+    $key = spl_object_hash($db);
+    if (!array_key_exists($key, $columns)) {
+        $result = $db->query("SHOW COLUMNS FROM radacct LIKE 'framedipv6address'");
+        $columns[$key] = $result && $result->num_rows > 0;
+    }
+    return $columns[$key] ? ($alias === '' ? '' : $alias.'.').'framedipv6address' : 'NULL';
+}
+
 function ipv6LogHistoryJoin()
 {
     return " LEFT JOIN ipv6_history h ON h.id=COALESCE(
@@ -42,7 +57,8 @@ function ipv6LogSchema($db)
 
 function ipv6LogRadius($db,$user,$ip,$nas='',$radiusId=0,$sessionId='')
 {
-    $s=$db->prepare("SELECT radacctid,acctsessionid,username,framedipaddress,callingstationid,framedipv6address,nasipaddress FROM radacct WHERE username=? AND framedipaddress=? AND acctstoptime IS NULL AND (?='' OR nasipaddress=?) AND (?=0 OR radacctid=?) AND (?='' OR LOWER(acctsessionid)=?) ORDER BY radacctid DESC LIMIT 2");
+    $wan = ipv6LogWanColumn($db, '');
+    $s=$db->prepare("SELECT radacctid,acctsessionid,username,framedipaddress,callingstationid,{$wan} AS framedipv6address,nasipaddress FROM radacct WHERE username=? AND framedipaddress=? AND acctstoptime IS NULL AND (?='' OR nasipaddress=?) AND (?=0 OR radacctid=?) AND (?='' OR LOWER(acctsessionid)=?) ORDER BY radacctid DESC LIMIT 2");
     if(!$s)throw new RuntimeException('Falha ao consultar sessao RADIUS.');
     $s->bind_param('ssssiiss',$user,$ip,$nas,$nas,$radiusId,$radiusId,$sessionId,$sessionId);$s->execute();$rows=$s->get_result()->fetch_all(MYSQLI_ASSOC);$s->close();
     if(count($rows)>1)throw new RuntimeException('SESSAO_AMBIGUA');

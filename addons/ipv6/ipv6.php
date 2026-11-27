@@ -85,6 +85,8 @@ $modoResumo = empty($busca) && empty($publicIp) && empty($publicPort) && empty($
 
 // ===== SQL =====
 function buildSQL($busca,$inicio,$fim,$modoResumo,$status='',$publicIp='',$publicPort=0){
+    global $conn;
+    $wan = ipv6LogWanColumn($conn);
 
     $joinIPv6 = ipv6LogHistoryJoin()."
     LEFT JOIN cgnat_mappings cm ON cm.private_ip=r.framedipaddress
@@ -93,7 +95,7 @@ function buildSQL($busca,$inicio,$fim,$modoResumo,$status='',$publicIp='',$publi
 
     if($modoResumo){
         $sql = "
-        SELECT r.username,r.framedipaddress,r.acctstarttime,r.acctstoptime,h.ipv6,h.callingstationid,r.framedipv6address AS wan_native,h.wan_ipv6 AS wan_observed,h.delegated_prefix AS pd_observed,r.delegatedipv6prefix AS pd_native,h.radius_record_id,h.created_at AS ipv6_observed_at,r.nasipaddress,cm.public_ip,cm.port_start,cm.port_end
+        SELECT r.username,r.framedipaddress,r.acctstarttime,r.acctstoptime,h.ipv6,h.callingstationid,{$wan} AS wan_native,h.wan_ipv6 AS wan_observed,h.delegated_prefix AS pd_observed,r.delegatedipv6prefix AS pd_native,h.radius_record_id,h.created_at AS ipv6_observed_at,r.nasipaddress,cm.public_ip,cm.port_start,cm.port_end
         FROM radacct r
         $joinIPv6
         WHERE r.radacctid IN (
@@ -103,7 +105,7 @@ function buildSQL($busca,$inicio,$fim,$modoResumo,$status='',$publicIp='',$publi
         )";
     } else {
         $sql = "
-        SELECT r.username,r.framedipaddress,r.acctstarttime,r.acctstoptime,h.ipv6,h.callingstationid,r.framedipv6address AS wan_native,h.wan_ipv6 AS wan_observed,h.delegated_prefix AS pd_observed,r.delegatedipv6prefix AS pd_native,h.radius_record_id,h.created_at AS ipv6_observed_at,r.nasipaddress,cm.public_ip,cm.port_start,cm.port_end
+        SELECT r.username,r.framedipaddress,r.acctstarttime,r.acctstoptime,h.ipv6,h.callingstationid,{$wan} AS wan_native,h.wan_ipv6 AS wan_observed,h.delegated_prefix AS pd_observed,r.delegatedipv6prefix AS pd_native,h.radius_record_id,h.created_at AS ipv6_observed_at,r.nasipaddress,cm.public_ip,cm.port_start,cm.port_end
         FROM radacct r
         $joinIPv6
         WHERE 1=1";
@@ -113,7 +115,7 @@ function buildSQL($busca,$inicio,$fim,$modoResumo,$status='',$publicIp='',$publi
         $sql .= " AND (
             r.username LIKE '%$busca%' OR
             r.framedipaddress LIKE '%$busca%' OR
-            h.ipv6 LIKE '%$busca%' OR r.framedipv6address LIKE '%$busca%' OR r.delegatedipv6prefix LIKE '%$busca%' OR
+            h.ipv6 LIKE '%$busca%' OR {$wan} LIKE '%$busca%' OR r.delegatedipv6prefix LIKE '%$busca%' OR
             cm.public_ip LIKE '%$busca%'".((ctype_digit($busca)) ? " OR $busca BETWEEN cm.port_start AND cm.port_end" : "")."
         )";
     }
@@ -398,7 +400,11 @@ $historyStats = ipv6HistoryStats($conn, $retentionMonths);
 $sql = buildSQL($busca,$inicio,$fim,$modoResumo,$status,$publicIp,$publicPort)." ORDER BY r.radacctid DESC LIMIT $limit OFFSET $offset";
 $res=$conn->query($sql);
 
-while($r=$res->fetch_assoc()){
+if (!$res) {
+    error_log('Log IPv6: '.$conn->error);
+    echo '<tr><td colspan="13">Não foi possível carregar o log IPv6. Consulte o log do servidor.</td></tr>';
+}
+while($res && $r=$res->fetch_assoc()){
 foreach($r as $field=>$value)$r[$field]=htmlspecialchars((string)($value??''),ENT_QUOTES,'UTF-8');
 $wanCell=$r['wan_observed']?:$r['wan_native'];
 $pdCell=$r['radius_record_id']!==''?$r['pd_observed']:($r['pd_native']?:$r['ipv6']);
